@@ -7,6 +7,7 @@ from typing import List, Optional,Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
 from routes.utils import hash_password
+from routes.company import Company
 
 
 
@@ -34,14 +35,16 @@ class Users(SQLModel, table=True):
         sa_column=Column(ARRAY(INTEGER))
     )
     active: bool = True  # default value
+    companyid: int = Field(default=1, nullable=False)
 
-def __post_init__(self):
+    def __post_init__(self):
         # Automatically hash password
         if self.password and not self.hpassword:
             self.hpassword = hash_password(self.password)
 #schema/ pydantic 
     
 class Puser(BaseModel):
+    companyid: int = Field(default=1, nullable=False)
     createdby: str = Field(nullable=False)
     modifiedby: str = Field(nullable=False)
     username: str = Field(nullable=False)
@@ -95,7 +98,19 @@ class Upduser(BaseModel):
             raise ValueError("userroleids must not be empty")
         return v
 
-  
+class UserWithCompany(BaseModel):
+    id: int
+    username: str
+    firstname: str
+    emailid: str
+    userroleids: List[int]
+    active: bool
+    companyid: Optional[int] = None 
+    companyname: str | None = None
+    createdby: str
+    createdon: datetime
+    modifiedby: str
+    modifiedon: datetime
   
 
 # ✅ Create user
@@ -121,13 +136,45 @@ def create_user(user: Puser):
         return Puser.from_orm(user_data)
 #
 
-@router.get("/userlist",response_model=List[Users])
+@router.get("/userlist",response_model=List[UserWithCompany])
 def users_list(session: Session=Depends(get_session)):
-    results = session.exec(select(Users))
-    get_users_list = results.all()
+    statement = select(
+            Users.id,
+            Users.username,
+            Users.firstname,
+            Users.emailid,
+            Users.userroleids,
+            Users.active,
+            Users.companyid,
+            Users.createdby,
+            Users.createdon,
+            Users.modifiedby,
+            Users.modifiedon,
+            Company.companyname
+        ).join(Company, Users.companyid == Company.id, isouter=True).where(Users.active == True).order_by(Users.id.desc())
+    
+    results = session.exec(statement)
+    get_users_list = [
+       UserWithCompany(
+            id=row.id,
+            username=row.username,
+            firstname=row.firstname,
+            emailid=row.emailid,
+            userroleids=row.userroleids,
+            active=row.active,
+            companyid=row.companyid,
+            companyname=row.companyname,
+            createdby=row.createdby,
+            createdon=row.createdon,
+            modifiedby=row.modifiedby,
+            modifiedon=row.modifiedon,
+        )
+        for row in results
+    ]
     return get_users_list
+    
 
-@router.post("/update_user/{id}")
+@router.post("/updateuser/{id}")
 def update_user(id: int,update_user:Upduser,session: Session=Depends(get_session)):
     db_users = session.get(Users,id)
     if not db_users:

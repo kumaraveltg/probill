@@ -5,6 +5,13 @@ from sqlalchemy import pool
 
 from alembic import context
 
+from sqlmodel import SQLModel
+
+# Import your app's Base + models
+from routes.db import Base
+#from routes import models
+
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
@@ -21,11 +28,12 @@ if config.config_file_name is not None:
 #from app.db import Base
 #import app.models
 #from app.models import Kusers
-from sqlmodel import SQLModel
 
+
+ 
 # Target metadata
-#target_metadata = Base.metadata
-target_metadata = SQLModel.metadata
+target_metadata = Base.metadata
+# target_metadata = SQLModel.metadata
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
