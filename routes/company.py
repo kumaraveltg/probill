@@ -1,11 +1,11 @@
 from fastapi import APIRouter,  HTTPException,Depends
-from sqlmodel import Session, select,SQLModel,Field,Column,create_engine
+from sqlmodel import Session, select,SQLModel,Field,Column,Relationship
 from .db import engine, get_session
 from sqlalchemy.dialects.postgresql import ARRAY, INTEGER,JSON
 from pydantic import EmailStr,validator,BaseModel
-from typing import List, Optional,Dict, Any
-from datetime import datetime 
-
+from typing import List, Optional,Dict 
+from datetime import datetime  
+ 
 
 #router = APIRouter()
 router = APIRouter(prefix="/company", tags=["Company"])
@@ -13,6 +13,7 @@ router = APIRouter(prefix="/company", tags=["Company"])
 #Model
 
 class Company(SQLModel, table=True):
+    __tablename__ = "company"
     __table_args__ = {"extend_existing": True} 
     id: int | None = Field(default=None, primary_key=True)
     cancel: str ="F"
@@ -29,6 +30,7 @@ class Company(SQLModel, table=True):
     gstno: Optional[str]=None  
     currency:int = Field(default=0, nullable=False)
     active: bool = True  # default value
+    
     
 #schema/ pydantic
 class Pcompany(BaseModel):
@@ -136,7 +138,7 @@ def update_company(company_id: int, company_update: CompanyUpdate, session: Sess
         raise HTTPException(status_code=404, detail="Company not found")
         
     # Update fields
-    for key, value in company_update.dict(exclude_unset=True).items():
+    for key, value in company_update.model_dump(exclude_unset=True).items():
         setattr(db_company, key, value)
     
     session.add(db_company)
@@ -216,13 +218,6 @@ def company_list(session: Session=Depends(get_session)):
         for company, currency_code in results
     ]
     return company_list
-
-
-
-
-
-
-
 
 
 @router.delete("/deletecompany/{company_id}")

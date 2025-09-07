@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from sqlmodel import SQLModel
 from routes.db import engine
 from routes import all_routers
+from fastapi.middleware.cors import CORSMiddleware
+from datetime import datetime
 
 app = FastAPI(
     title="Pro-Bill - Billing/Invoicing API",
@@ -11,6 +13,16 @@ app = FastAPI(
     redoc_url="/redocs",
 )
 
+# CORS configuration
+orgin = ["*"]   #["http://localhost:3000"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust as needed for security
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 @app.on_event("startup")
 def on_startup():
     SQLModel.metadata.create_all(engine)

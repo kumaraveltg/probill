@@ -1,0 +1,121 @@
+from fastapi import APIRouter,  HTTPException,Depends
+from sqlmodel import Session, select,SQLModel,Field,Column,Relationship
+from .db import engine, get_session
+from sqlalchemy.dialects.postgresql import ARRAY, INTEGER,JSON
+from pydantic import EmailStr,validator,BaseModel
+from typing import List, Optional,Dict, Any 
+from routes.commonflds import CommonFields
+from datetime import datetime, timedelta, date
+from routes.company import Company  
+
+router = APIRouter(tags=["UOM"])
+
+class UOM(CommonFields, table=True):
+    __tablename__ = "uom"
+    __table_args__ = {"extend_existing": True} 
+    companyid: int = Field(foreign_key="company.id", nullable=False)
+    uomname: str = Field(index=True,nullable=False)
+    uomcode: str = Field(index=True,nullable=False)
+    active: bool = True  # default value
+
+#schema/ pydantic
+class PUOM(BaseModel):
+    companyid: int = Field(default= 0,nullable=False)
+    createdby: str = Field(nullable=False)
+    modifiedby: str = Field(nullable=False)
+    uomname: str = Field(nullable=False)
+    uomcode: str = Field(nullable=False)
+    active: bool = True 
+    model_config = {
+        "from_attributes": True,
+        "json_encoders": {
+            datetime: lambda v: v.strftime("%d/%m/%Y %H:%M:%S") if v else None
+        }
+    }
+    @validator( "modifiedby","uomname","uomcode" )
+    def must_not_be_empty(cls, v):
+      if not v or not v.strip():
+         raise ValueError("This field is required")
+      return v
+    
+class UOMUpdate(BaseModel):
+    uomname: Optional[str] = None
+    uomcode: Optional[str] = None
+    modifiedby: Optional[str]= None
+    active: Optional[bool] = None   
+    @validator( "modifiedby" )
+    def must_not_be_empty(cls, v):
+      if not v or not v.strip():
+         raise ValueError("This field is required")
+      return v
+    
+class UOMRead(BaseModel):
+    id: int
+    createdby: str
+    createdon: datetime 
+    modifiedby: str
+    modifiedon: datetime   
+    companyid: int
+    companyname: Optional[str] = None     
+    uomname: str
+    uomcode: str
+    active: bool
+
+    model_config = {
+        "from_attributes": True,
+        "json_encoders": {
+            datetime: lambda v: v.strftime("%d/%m/%Y %H:%M:%S") if v else None
+        }
+    }
+
+    
+@router.post("/uom/", response_model=UOMRead)
+def create_uom(uom: PUOM, session: Session = Depends(get_session)):
+    if uom.companyid !=0:
+        company = session.get(Company, uom.companyid)
+        if not company:
+            raise HTTPException(status_code=400, detail="Invalid company ID")
+    if not uom.uomname or not uom.uomname.strip():
+        raise HTTPException(status_code=400, detail="UOM name is required")
+    if not uom.uomcode or not uom.uomcode.strip():
+        raise HTTPException(status_code=400, detail="UOM code is required")
+    existing_uom = session.exec(
+        select(UOM,Company.companyname).join(Company, UOM.companyid == Company.id).where(UOM.uomcode == uom.uomcode)   
+    ).first()
+    if existing_uom:
+        raise HTTPException(status_code=400, detail="UOM code already exists")
+    
+    db_uom = UOM.from_orm(uom)
+    session.add(db_uom)
+    session.commit()
+    session.refresh(db_uom)
+    return db_uom 
+  
+@router.post("/uom/{uom_id}", response_model=UOMRead)
+def update_uom(uom_id: int, uom_update: UOMUpdate, session: Session = Depends(get_session)):
+    db_uom = session.get(UOM, uom_id)
+    if not db_uom:
+        raise HTTPException(status_code=404, detail="UOM not found")
+    
+    for key, value in uom_update.model_dump(exclude_unset=True).items():
+        setattr(db_uom, key, value)
+    
+    session.add(db_uom)
+    session.commit()
+    session.refresh(db_uom)
+    return db_uom
+
+@router.get("/uomlist/{company_id}",response_model=List[UOMRead])
+def uom_list(company_id: int, session: Session=Depends(get_session)):
+    uom_list = session.exec(
+        select(UOM, Company.companyname).join(Company, UOM.companyid == Company.id ,isouter=True ).where(UOM.active == True 
+        and (UOM.companyid == company_id or company_id == 0))
+    ).all()
+    
+    result = []
+    for uom, companyname in uom_list:
+        uom_data = UOMRead.from_orm(uom)
+        uom_data.companyname = companyname
+        result.append(uom_data)
+    
+    return result

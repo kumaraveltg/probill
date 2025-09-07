@@ -11,7 +11,7 @@ from routes.company import Company
 
 
 
-router = APIRouter()
+router = APIRouter(prefix="/users", tags=["Users"])
 
  
 # Model
