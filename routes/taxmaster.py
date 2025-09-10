@@ -151,6 +151,7 @@ def update_taxmaster(taxheaderid: int,tax: Taxupdate, session: Session = Depends
     session.commit()
 
     return tax
+
 @router.get("/gettax/{companyid}", response_model=Ptaxread)
 def read_taxes(companyid: int, session: Session = Depends(get_session)):
     tax_header = session.get(TaxHeader, companyid)

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ProBill DB Export</title>
+  <meta charset="UTF-8">
+  <script>
+    // Function to export data
+    async function exportData(endpoint) {
+      try {
+        const res = await fetch(endpoint);
+        const data = await res.json();
+        const status = document.getElementById("status");
+        status.innerText = "✅ " + data.message + " | Saved at: " + data.file_path;
+
+        // Add download link
+        if (data.file_path) {
+          const link = document.createElement("a");
+          link.href = "file:///" + data.file_path.replace(/\\/g, "/");
+          link.download = data.file_path.split("\\").pop();
+          link.innerText = "📥 Download file";
+          status.appendChild(document.createElement("br"));
+          status.appendChild(link);
+        }
+      } catch (err) {
+        console.error(err);
+        document.getElementById("status").innerText = "❌ Error exporting data";
+      }
+    }
+
+    // Function to upload Excel dynamically
+    async function uploadFile() {
+      const table = document.getElementById("table_name").value;
+      const pk = document.getElementById("pk_column").value;
+      const fileInput = document.getElementById("file_input");
+
+      if (!fileInput.files[0]) {
+        alert("Please select a file to upload");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", fileInput.files[0]);
+
+      try {
+        const res = await fetch(`http://192.168.1.100:8005/import/excel/${table}/${pk}`, {
+          method: "POST",
+          body: formData
+        });
+        const data = await res.json();
+        const status = document.getElementById("status");
+        status.innerText = "✅ " + data.message + (data.log_file ? " | Log: " + data.log_file : "");
+
+        // Add download link for uploaded file log if exists
+        if (data.log_file) {
+          const link = document.createElement("a");
+          link.href = "file:///" + data.log_file.replace(/\\/g, "/");
+          link.download = data.log_file.split("\\").pop();
+          link.innerText = "📥 Download log file";
+          status.appendChild(document.createElement("br"));
+          status.appendChild(link);
+        }
+      } catch (err) {
+        console.error(err);
+        document.getElementById("status").innerText = "❌ Error uploading file";
+      }
+    }
+  </script>
+</head>
+<body>
+  <h2>Export DB to Excel</h2>
+  <button onclick="exportData('http://192.168.1.100:8005/export/excel')">
+    Export All Tables
+  </button>
+  <button onclick="exportData('http://192.168.1.100:8005/export/query')">
+    Export Customer
+  </button>
+
+  <h2>Upload Excel to Import into PostgreSQL</h2>
+
+  <label for="table_name">Select Table:</label>
+  <select id="table_name">
+    <option value="customer">Customer</option>
+    <option value="finyr_staging">Finyr Header</option>
+  </select>
+
+  <label for="pk_column">Select Primary Key Column:</label>
+  <select id="pk_column">
+    <option value="id">ID</option>
+    <option value="finyrname">Finyr Name</option>
+  </select>
+
+  <input type="file" id="file_input" name="file" />
+  <button type="button" onclick="uploadFile()">Upload & Import</button>
+
+  <p id="status"></p>
+</body>
+</html>
