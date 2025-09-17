@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends
-from sqlmodel import Session, select, SQLModel, Field, delete 
+from fastapi import APIRouter, HTTPException, Depends,Query
+from sqlmodel import Session, select, SQLModel, Field, delete ,func
 from .db import engine, get_session
 from pydantic import  validator, BaseModel
 from typing import List, Optional
@@ -55,13 +55,20 @@ class CountryRead(BaseModel):
             datetime: lambda v: v.strftime("%d/%m/%Y %H:%M:%S") if v else None
         }
     }
+class CountrySearch(BaseModel):
+    countrycode: str
+    countryname: str
+    active: Optional[bool] = None
+
+    class Config:
+        orm_mode = True
 
 @router.post("/country/", response_model=CountryRead)
 def create_country(country: PCountry, session: Session= Depends(get_session)):
-    db_country = session.exec(select(Country).where(Country.countrycode == country.countrycode)).first()
+    db_country = session.exec(select(Country).where(func.upper(Country.countrycode) == country.countrycode.upper())).first()
     if db_country:
         raise HTTPException(status_code=400, detail="Country code already exists")
-    db_country = session.exec(select(Country).where(Country.countryname == country.countryname)).first()
+    db_country = session.exec(select(Country).where(func.upper(Country.countryname) == country.countryname.upper())).first()
     if db_country:
         raise HTTPException(status_code=400, detail="Country name already exists")  
     
@@ -71,9 +78,9 @@ def create_country(country: PCountry, session: Session= Depends(get_session)):
     session.refresh(db_country)
     return db_country
 
-@router.post("/countryupdate/", response_model=CountryUpdate)
-def update_country(country: CountryUpdate, session: Session= Depends(get_session)):
-    db_country = session.exec(select(Country).where(Country.countrycode == country.countrycode)).first()
+@router.post("/countryupdate/{id}", response_model=CountryUpdate)
+def update_country(id :int, country: CountryUpdate, session: Session= Depends(get_session)):
+    db_country = session.exec(select(Country).where(Country.id == id)).first()
     if not db_country:
         raise HTTPException(status_code=404, detail="Country code not found")
     db_country_name = session.exec(select(Country).where(Country.countryname == country.countryname, Country.id != db_country.id)).first()
@@ -94,6 +101,28 @@ def read_countries(skip: int = 0, limit: int = 100, session: Session = Depends(g
     countries = session.exec(select(Country).offset(skip).limit(limit)).all()
     return countries
 
+@router.get("/country/search", response_model=List[CountrySearch])
+def search_country(field: str = Query(...), value: str = Query(...), db: Session = Depends(get_session)):
+    query = db.query(Country)
+
+    if field == "countrycode":
+        query = query.filter(Country.countrycode.ilike(f"%{value}%"))
+    elif field == "countryname":
+        query = query.filter(Country.countryname.ilike(f"%{value}%"))
+    elif field == "active":
+        active_value = value.lower() in ["yes", "true", "1"]
+        query = query.filter(Country.active == active_value)
+    
+    results = query.all()
+    return [
+        {
+            "countrycode": c.countrycode,
+            "countryname": c.countryname,
+            "active": c.active
+        } 
+        for c in results
+    ]
+
 @router.get("/country/{country_id}", response_model=CountryRead)
 def read_country(country_id: int, session: Session = Depends(get_session)):
     country = session.get(Country, country_id)
@@ -109,3 +138,4 @@ def delete_country(country_id: int, session: Session = Depends(get_session)):
     session.exec(statement)
     session.commit()
     return {"ok": True, "message": "Country deleted successfully"}
+
