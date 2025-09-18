@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends,Query
 from sqlmodel import Session, select, SQLModel, Field, delete 
 from .db import engine, get_session
 from pydantic import  validator, BaseModel
@@ -61,6 +61,10 @@ class StateRead(BaseModel):
             datetime: lambda v: v.strftime("%d/%m/%Y %H:%M:%S") if v else None
         }
     }
+class StateSearch(BaseModel):
+    statecode: str
+    statename: str
+    active: bool
 
 @router.post("/state/", response_model=PState)
 def create_state(state: PState, session: Session= Depends(get_session)):
@@ -91,17 +95,27 @@ def update_state(stateid:int,state: StateUpdate, session: Session= Depends(get_s
     session.commit()
     session.refresh(db_state)
     return db_state
+@router.get("/state/search", response_model=List[StateSearch])
+def search_state(field: str = Query(...), value: str = Query(...), db: Session = Depends(get_session)):
+    query = db.query(State)
 
-@router.get("/states/{state_id}", response_model=StateRead)
-def read_state(state_id: int, session: Session = Depends(get_session)):
-    db_state = session.exec(select(State).where(State.id == state_id)).first()
-    if not db_state:
-        raise HTTPException(status_code=404, detail="State not found")
-    db_country = session.exec(select(Country).where(Country.id == db_state.countryid)).first()
-    countryname = db_country.countryname if db_country else None
-    state_data = StateRead.from_orm(db_state)
-    state_data.countryname = countryname
-    return state_data   
+    if field == "statecode":
+        query = query.filter(State.statecode.ilike(f"%{value}%"))
+    elif field == "statename":
+        query = query.filter(State.statename.ilike(f"%{value}%"))
+    elif field == "active":
+        active_value = value.lower() in ["yes", "true", "1"]
+        query = query.filter(State.active == active_value)
+    
+    results = query.all()
+    return [
+        {
+            "statecode": c.statecode,
+            "statename": c.statename,
+            "active": c.active
+        } 
+        for c in results
+    ]
 @router.get("/states/", response_model=List[StateRead])
 def read_states(skip: int = 0, limit: int = 100, session: Session = Depends(get_session)):
     states = session.exec(select(State).offset(skip).limit(limit)).all()
@@ -113,6 +127,17 @@ def read_states(skip: int = 0, limit: int = 100, session: Session = Depends(get_
         state_data.countryname = countryname
         state_list.append(state_data)
     return state_list
+@router.get("/states/{state_id}", response_model=StateRead)
+def read_state(state_id: int, session: Session = Depends(get_session)):
+    db_state = session.exec(select(State).where(State.id == state_id)).first()
+    if not db_state:
+        raise HTTPException(status_code=404, detail="State not found")
+    db_country = session.exec(select(Country).where(Country.id == db_state.countryid)).first()
+    countryname = db_country.countryname if db_country else None
+    state_data = StateRead.from_orm(db_state)
+    state_data.countryname = countryname
+    return state_data   
+
 
 @router.delete("/state/{state_id}")
 def delete_state(state_id: int, session: Session = Depends(get_session)):     

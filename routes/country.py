@@ -97,7 +97,7 @@ def update_country(id :int, country: CountryUpdate, session: Session= Depends(ge
     return db_country
 
 @router.get("/country/", response_model=List[CountryRead])
-def read_countries(skip: int = 0, limit: int = 100, session: Session = Depends(get_session)):
+def read_countries(skip: int = 0, limit: int = 10, session: Session = Depends(get_session)):
     countries = session.exec(select(Country).offset(skip).limit(limit)).all()
     return countries
 
