@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends
-from sqlmodel import Session, select, SQLModel, Field, delete 
+from fastapi import APIRouter, HTTPException, Depends,Query
+from sqlmodel import Session, select, SQLModel, Field, delete,func
 from .db import engine, get_session
 from pydantic import  validator, BaseModel
 from typing import List, Optional
@@ -55,6 +55,8 @@ class CityRead(BaseModel):
     countryname: Optional[str] = None
     stateid: int
     statename: Optional[str] = None
+    statecode: Optional[str] = None
+    countrycode: Optional[str] = None
     citycode: str
     cityname: str
     active: bool 
@@ -68,6 +70,26 @@ class CityRead(BaseModel):
             datetime: lambda v: v.strftime("%d/%m/%Y %H:%M:%S") if v else None
         }
     }
+class CityResponse(BaseModel):
+    total: int
+    city_list: List[CityRead] = []
+    model_config = {
+        "from_attributes": True,
+        "json_encoders": {
+            datetime: lambda v: v.strftime("%d/%m/%Y %H:%M:%S") if v else None
+        }
+    }
+class CitySearch(BaseModel):
+    id: int
+    citycode: str
+    cityname: str
+    active: bool
+    stateid: int
+    statecode: Optional[str] = None
+    statename: Optional[str] = None
+    countryid: int
+    countryname: Optional[str] = None
+    countrycode: Optional[str] = None
 
 @router.post("/city/", response_model=CityRead)
 def create_city(city: PCity, session: Session= Depends(get_session)):   
@@ -103,6 +125,78 @@ def update_city(cityid: int, city:  CityUpdate, session: Session= Depends(get_se
     session.refresh(db_city)
     return city
 
+@router.get("/city/search/", response_model=List[CitySearch])
+def search_state(field: str = Query(...) , value: str = Query(...),
+                  db: Session = Depends(get_session)):
+    query = db.query(
+        City.id,
+        City.citycode,
+        City.cityname,  
+        City.active,
+        City.stateid,   
+        State.statename,
+        State.statecode,
+        City.countryid,     
+        Country.countryname,
+        Country.countrycode
+        ).join(State, City.stateid == State.id).join(Country, City.countryid == Country.id)  
+    apply_filter = False
+    if field == "citycode":
+        query = query.filter(City.citycode.ilike(f"%{value}%"))
+    elif field == "cityname":
+        query = query.filter(City.cityname.ilike(f"%{value}%")) 
+    elif field == "active": 
+        active_value = value.lower() in ["yes", "true", "1"]
+        query = query.filter(City.active == active_value)   
+    elif field == "statename":
+        query = query.filter(State.statename.ilike(f"%{value}%"))   
+    elif field == "countryname":
+        query = query.filter(Country.countryname.ilike(f"%{value}%"))   
+    results = query.all()
+
+    return [
+    {
+        "id": row.id,
+        "citycode": row.citycode,
+        "cityname": row.cityname,
+        "active": row.active,
+        "stateid": row.stateid,
+        "statename": row.statename,
+        "countryid": row.countryid,
+        "countryname": row.countryname,
+        "statecode": row.statecode,
+        "countrycode": row.countrycode
+    }
+    for row in results
+]
+   
+@router.get("/cities/", response_model=CityResponse)
+def read_cities(skip: int = 0, limit: int = 10, session : Session = Depends(get_session)):
+    cities = session.exec(select(City).order_by (City.cityname).offset(skip).limit(limit)).all()
+    totalcount = session.exec(select(func.count()).select_from(City)).one()
+    city_list = []
+    for city in cities:
+        db_state = session.get(State, city.stateid)
+        db_country = session.get(Country, city.countryid)
+        city_data = CityRead(
+            id=city.id,
+            countryid=city.countryid,
+            countryname=db_country.countryname if db_country else None,
+            stateid=city.stateid,
+            statename=db_state.statename if db_state else None,
+            citycode=city.citycode,
+            cityname=city.cityname,
+            active=city.active,
+            createdby=city.createdby,
+            createdon=city.createdon,
+            modifiedby=city.modifiedby,
+            modifiedon=city.modifiedon,
+            statecode=db_state.statecode if db_state else None,
+            countrycode=db_country.countrycode if db_country else None
+        )
+        city_list.append(city_data)
+    return {"city_list": city_list , "total":totalcount}  
+
 @router.get("/cities/{city_id}", response_model=CityRead)   
 def read_city(city_id: int, session: Session = Depends(get_session)):
     db_city = session.exec(select(City).where(City.id == city_id)).first()
@@ -123,32 +217,7 @@ def read_city(city_id: int, session: Session = Depends(get_session)):
         createdon=db_city.createdon,
         modifiedby=db_city.modifiedby,
         modifiedon=db_city.modifiedon
-    )
-   
-@router.get("/cities/", response_model=List[CityRead])
-def read_cities(skip: int = 0, limit: int = 100, session : Session = Depends(get_session)):
-    cities = session.exec(select(City).offset(skip).limit(limit)).all()
-    city_list = []
-    for city in cities:
-        db_state = session.get(State, city.stateid)
-        db_country = session.get(Country, city.countryid)
-        city_data = CityRead(
-            id=city.id,
-            countryid=city.countryid,
-            countryname=db_country.countryname if db_country else None,
-            stateid=city.stateid,
-            statename=db_state.statename if db_state else None,
-            citycode=city.citycode,
-            cityname=city.cityname,
-            active=city.active,
-            createdby=city.createdby,
-            createdon=city.createdon,
-            modifiedby=city.modifiedby,
-            modifiedon=city.modifiedon
-        )
-        city_list.append(city_data)
-    return city_list   
-            
+    )            
 @router.delete("/city/{city_id}")
 def delete_city(city_id: int, session: Session = Depends(get_session)):     
     city = session.get(City, city_id)

@@ -48,6 +48,7 @@ class StateRead(BaseModel):
     id: int
     countryid: int
     countryname: Optional[str] = None
+    countrycode: Optional[str] = None
     statecode: str
     statename: str
     active: bool 
@@ -166,6 +167,7 @@ def read_states(skip: int = 0, limit: int = 10, session: Session = Depends(get_s
                 statename=state.statename,
                 countryid=state.countryid,
                 countryname=countryname,
+                countrycode=db_country.countrycode if db_country else None,
                 active=state.active,
                 createdby=state.createdby,
                 createdon=state.createdon,
@@ -187,7 +189,7 @@ def read_state(state_id: int, session: Session = Depends(get_session)):
     return state_data   
 
 
-@router.delete("/state/{state_id}")
+@router.delete("/statedelete/{state_id}")
 def delete_state(state_id: int, session: Session = Depends(get_session)):     
     state = session.get(State, state_id)
     if not state:
