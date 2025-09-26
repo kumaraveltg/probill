@@ -1,7 +1,7 @@
-from fastapi import APIRouter,  HTTPException,Depends
-from sqlmodel import Session, select,SQLModel,Field,Column,create_engine
+from fastapi import APIRouter,  HTTPException,Depends,Query
+from sqlmodel import Session, select,SQLModel,Field,Column,create_engine,func
 from .db import engine, get_session
-from sqlalchemy.dialects.postgresql import ARRAY, INTEGER,JSON 
+from sqlalchemy.dialects.postgresql import ARRAY, INTEGER,JSON  
 from pydantic import EmailStr,validator,BaseModel
 from typing import List, Optional,Dict, Any 
 from datetime import datetime   
@@ -20,12 +20,13 @@ class Currency(CommonFields, table=True):
 
 
 #schema/ pydantic
-class Pcurrency(BaseModel): 
+class Pcurrency(BaseModel):  
     createdby: str = Field(nullable=False)
     modifiedby: str = Field(nullable=False)
     currencyname: str = Field(nullable=False)
     currencycode: str = Field(nullable=False)
     symbol: Optional[str]=None 
+    active: bool = True
     model_config = {
         "from_attributes": True,
         "json_encoders": {
@@ -39,6 +40,38 @@ class UpdateCurrency(BaseModel):
     currencycode: Optional[str] = None
     symbol: Optional[str]=None 
     active: Optional[bool] = None
+
+class CurrencyRead(BaseModel):
+    id: int
+    createdby: str  
+    modifiedby: str  
+    currencyname: str 
+    currencycode: str 
+    symbol: Optional[str]=None 
+    active: bool = True
+    createdby: str
+    createdon: datetime
+    modifiedby: str
+    modifiedon: datetime 
+    model_config = {
+        "from_attributes": True,
+        "json_encoders": {
+            datetime: lambda v: v.strftime("%d/%m/%Y %H:%M:%S") if v else None
+        }
+    }
+
+class CurrencySearch(BaseModel):
+    id: int
+    currencycode: str
+    currencyname: str
+    active: bool
+
+class CurrencyResponse(BaseModel):
+ currency_list: List[CurrencyRead]
+ total: int = Field(default=0)
+
+ 
+     
 
 @router.post("/addcurrency", response_model=Pcurrency)
 def add_currency(currency: Pcurrency, session: Session = Depends(get_session)):
@@ -70,10 +103,61 @@ def update_currency(currency_id: int, currency: UpdateCurrency, session: Session
     session.refresh(db_currency)
     return db_currency
 
-@router.get("/getcurrency", response_model=List[Pcurrency])
-def get_currency(session: Session = Depends(get_session)):
-    currencies = session.exec(select(Currency)).all()
-    return currencies
+@router.get("/search",response_model=List[CurrencySearch])
+def currency_search( 
+    field: str = Query(...),
+    value: str = Query(...),
+    db: Session = Depends(get_session)
+):
+     from routes.currecny import Currency 
+     query = db.query(
+        Currency.id,
+        Currency.currencycode,
+        Currency.currencyname,         
+        Currency.active,         
+    ) 
+# Apply filters
+     if field == "currencycode":
+        query = query.filter(Currency.currencycode.ilike(f"%{value}%"))
+     elif field == "currencyname":
+        query = query.filter(Currency.currencyname.ilike(f"%{value}%"))
+     elif field == "active":
+         active_value = value.lower() in ["yes", "true", "1"]
+         query = query.filter(Currency.active == active_value)      
+
+     results = query.all()
+     # Each row is a tuple → map to dict
+     return [
+        {
+            "id": r.id,            
+            "currencycode": r.currencycode,
+            "currencyname": r.currencyname,
+            "active" : r.active
+        }
+        for r in results
+    ]
+
+@router.get("/getcurrency/", response_model=CurrencyResponse)
+def get_currency( skip: int = 0, limit: int = 10,session: Session = Depends(get_session)):
+    currencies = session.exec(select(Currency).order_by(Currency.currencycode).offset(skip).limit(limit)).all()
+    totalcount = session.exec(select(func.count()).select_from(Currency)).one()
+    currency_list=[]
+
+    for currency in currencies:
+     currency_list.append(
+      CurrencyRead(
+        id= currency.id, 
+        currencyname=currency.currencyname,
+        currencycode = currency.currencycode,
+        symbol =currency.symbol,
+        active =  currency.active,
+        createdby= currency.createdby,
+        createdon = currency.createdon,
+        modifiedby= currency.modifiedby,
+        modifiedon= currency.modifiedon ,
+            )
+    )
+    return {"currency_list":currency_list,"total":totalcount}
 
 @router.get("/getcurrencybyid/{currency_id}", response_model=Pcurrency)
 def get_currency_by_id(currency_id: int, session: Session = Depends(get_session)):

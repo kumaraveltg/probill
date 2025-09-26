@@ -1,9 +1,9 @@
-from fastapi import APIRouter,  HTTPException,Depends
-from sqlmodel import Session, select,SQLModel,Field,Column,Relationship
+from fastapi import APIRouter,  HTTPException,Depends,Query 
+from sqlmodel import Session, select,SQLModel,Field,func,and_
 from .db import engine, get_session
 from sqlalchemy.dialects.postgresql import ARRAY, INTEGER,JSON
 from pydantic import EmailStr,validator,BaseModel
-from typing import List, Optional,Dict 
+from typing import List, Optional 
 from datetime import datetime  
  
 
@@ -101,9 +101,22 @@ class CompanyRead(BaseModel):
         }
     }
 
+class CompanySearch(BaseModel):
+    id: int
+    companyname: str
+    companycode: str
+    adress: Optional[str]
+    phone: Optional[str]
+    emailid: Optional[EmailStr]
+    contactperson: Optional[str]
+    gstno: Optional[str]  
+    currency:Optional[int]
+    currencycode: Optional[str] = None
+    active: bool  
 
-
-
+class CompanyResponse(BaseModel):
+    company_list: list[CompanyRead]
+    total: int = Field(default =0)
 
 # ✅ Create company
 @router.post("/createcompany",response_model=Pcompany) 
@@ -146,55 +159,118 @@ def update_company(company_id: int, company_update: CompanyUpdate, session: Sess
     session.refresh(db_company)
     return Pcompany.from_orm(db_company)
 
-@router.get("/getcompany", response_model=CompanyRead)
+@router.get("/company/search",response_model=List[CompanySearch])
+def company_search( 
+    field: str = Query(...),
+    value: str = Query(...),
+    db: Session = Depends(get_session)
+):
+     from routes.company import Company  # import here, not at the top
+     from routes.currecny import Currency
+
+     query = db.query(
+        Company.id,
+        Company.companycode,
+        Company.companyname,
+        Company.adress,
+        Company.emailid,
+        Company.gstno,
+        Company.phone,
+        Company.contactperson,
+        Company.active,
+        Company.currency,
+        Currency.currencycode
+    ).join(Currency, Company.currency == Currency.id)
+# Apply filters
+     if field == "companycode":
+        query = query.filter(Company.companycode.ilike(f"%{value}%"))
+     elif field == "companyname":
+        query = query.filter(Company.companyname.ilike(f"%{value}%"))
+     elif field == "active":
+         active_value = value.lower() in ["yes", "true", "1"]
+         query = query.filter(Company.active == active_value)
+     elif field == "currencycode":
+        query = query.filter(Currency.currencycode.ilike(f"%{value}%"))
+
+     results = query.all()
+
+    # Each row is a tuple → map to dict
+     return [
+        {
+            "id": r.id,
+            "companycode": r.companycode,
+            "companyname": r.companyname,
+            "adress": r.adress,
+            "phone": r.phone,
+            "emailid": r.emailid,
+            "contactperson": r.contactperson,
+            "gstno": r.gstno,
+            "active": r.active,  
+            "currency": r.currency,
+            "currencycode": r.currencycode,
+        }
+        for r in results
+    ]
+
+@router.get("/getcompany/", response_model=CompanyResponse)
 def get_company(
-    company_id: int | None = None,
-    companyname: str | None = None,
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    skip: int = Query(0, ge=0),   # default = 0, must be >= 0
+    limit: int = Query(10, ge=1), # default = 10, must be >= 1
 ):
     # local import avoids circular import
-    from routes.company import Company
+    
     from routes.currecny import Currency
+    from routes.company import Company 
 
-    statement = select(Company, Currency.currencycode).join(Currency, Company.currency == Currency.id, isouter=True)
-    if company_id:
-        statement = statement.where(Company.id == company_id)
-    elif companyname:
-        statement = statement.where(Company.companyname == companyname)
-    else:
-        raise HTTPException(status_code=400, detail="Provide company_id or companyname")
+    # base query
+    statement = (
+        select(Company, Currency.currencycode)
+        .join(Currency, Company.currency == Currency.id, isouter=True)
+        .offset(skip)
+        .limit(limit)
+    )
+    result = session.exec(statement).all()
 
-    result = session.exec(statement).first()
     if not result:
         raise HTTPException(status_code=404, detail="Company not found")
-    
-    company, currency_code = result
 
-    return CompanyRead(
-        id=company.id,
-        cancel=company.cancel,
-        createdby=company.createdby,    
-        createdon=company.createdon,
-        modifiedby=company.modifiedby,
-        modifiedon=company.modifiedon,
-        companyname=company.companyname,              
-        companycode=company.companycode,
-        adress=company.adress,
-        phone=company.phone,
-        emailid=company.emailid,
-        contactperson=company.contactperson,
-        gstno=company.gstno,
-        currency=company.currency,
-        currency_code=currency_code or "N/A",
-        active=company.active
-    )
+    # total count of all companies (without pagination)
+    totalcount = session.exec(select(func.count()).select_from(Company)).one()
 
-@router.get("/companylist",response_model=List[CompanyRead])
-def company_list(session: Session=Depends(get_session)):
+    company_list = []
+    for company, currency_code in result:
+        company_list.append(
+            CompanyRead(
+                id=company.id,
+                cancel=company.cancel,
+                createdby=company.createdby,
+                createdon=company.createdon,
+                modifiedby=company.modifiedby,
+                modifiedon=company.modifiedon,
+                companyname=company.companyname,
+                companycode=company.companycode,
+                adress=company.adress,
+                phone=company.phone,
+                emailid=company.emailid,
+                contactperson=company.contactperson,
+                gstno=company.gstno,
+                currency=company.currency,
+                currency_code=currency_code or "N/A",
+                active=company.active,
+            )
+        )
+
+    return {"company_list": company_list, "total": totalcount}
+
+
+
+@router.get("/companylist/{companyid}",response_model=List[CompanyRead])
+def company_list(companyid: int,session: Session=Depends(get_session)):
     from routes.company import Company
     from routes.currecny import Currency
     
-    statement = select(Company, Currency.currencycode).join(Currency, Company.currency == Currency.id, isouter=True).where(Company.active == True).order_by(Company.id.desc())
+    statement = select(Company, Currency.currencycode).join(Currency, Company.currency == Currency.id, isouter=True).where(and_(Company.active == True,Company.id==companyid)).order_by(Company.id.desc())
     results = session.exec(statement)
     company_list = [
         CompanyRead(

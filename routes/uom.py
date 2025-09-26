@@ -124,10 +124,11 @@ def update_uom(uom_id: int, uom_update: UOMUpdate, session: Session = Depends(ge
     session.refresh(db_uom)
     return db_uom
 
-@router.get("/uom/search", response_model=List[UomSearch])
+@router.get("/uom/search/{companyid}", response_model=List[UomSearch])
 def search_uom( 
-    field: str = Query(...),
-    value: str = Query(...),
+     companyid: int,
+     field: str = Query(...),
+     value: str = Query(...),     
     db: Session = Depends(get_session)
 ):
     Query = db.query(
@@ -137,7 +138,7 @@ def search_uom(
         UOM.active,
         UOM.companyid,
         Company.companyname
-    ).join(Company, UOM.companyid == Company.id ,isouter=True ) 
+    ).join(Company, UOM.companyid == Company.id ,isouter=True ).filter(Company.id== companyid) 
 
     if field == "uomname":
         Query = Query.filter(UOM.uomname.ilike(f"%{value}%"))
