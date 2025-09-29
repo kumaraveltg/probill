@@ -4,10 +4,10 @@ from .db import engine, get_session
 from sqlalchemy.dialects.postgresql import ARRAY, INTEGER
 from pydantic import EmailStr,validator
 from typing import List, Optional,Dict, Any
-from datetime import datetime
+from datetime import datetime,timedelta
 from pydantic import BaseModel
 from routes.utils import hash_password
-from routes.company import Company
+from routes.company import Company 
 
 
 
@@ -36,6 +36,7 @@ class Users(SQLModel, table=True):
     )
     active: bool = True  # default value
     companyid: int = Field(default=1, nullable=False)
+    companyno: str
 
     def __post_init__(self):
         # Automatically hash password
@@ -45,6 +46,7 @@ class Users(SQLModel, table=True):
     
 class Puser(BaseModel):
     companyid: int = Field(default=1, nullable=False)
+    companyno: str = Field(default=1, nullable=False)
     createdby: str = Field(nullable=False)
     modifiedby: str = Field(nullable=False)
     username: str = Field(nullable=False)
@@ -70,6 +72,7 @@ class Puser(BaseModel):
         if v is None or not v:
             raise ValueError("userroleids must not be empty")
         return v
+
    
 class Upduser(BaseModel):
     modifiedby: str = Field(nullable=False)
@@ -106,12 +109,14 @@ class UserWithCompany(BaseModel):
     userroleids: List[int]
     active: bool
     companyid: Optional[int] = None 
+    companyno: str
     companyname: str | None = None
     createdby: str
     createdon: datetime
     modifiedby: str
     modifiedon: datetime
-  
+   
+
 
 # ✅ Create user
 @router.post("/users/", response_model=Puser)
@@ -146,6 +151,7 @@ def users_list(session: Session=Depends(get_session)):
             Users.userroleids,
             Users.active,
             Users.companyid,
+            Users.companyno,
             Users.createdby,
             Users.createdon,
             Users.modifiedby,
@@ -163,6 +169,7 @@ def users_list(session: Session=Depends(get_session)):
             userroleids=row.userroleids,
             active=row.active,
             companyid=row.companyid,
+            companyno= row.companyno,
             companyname=row.companyname,
             createdby=row.createdby,
             createdon=row.createdon,

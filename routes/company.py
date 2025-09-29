@@ -4,7 +4,9 @@ from .db import engine, get_session
 from sqlalchemy.dialects.postgresql import ARRAY, INTEGER,JSON
 from pydantic import EmailStr,validator,BaseModel
 from typing import List, Optional 
-from datetime import datetime  
+from datetime import datetime   
+from .userauth import get_current_user
+from routes.commonflds import CommonFields 
  
 
 #router = APIRouter()
@@ -30,12 +32,14 @@ class Company(SQLModel, table=True):
     gstno: Optional[str]=None  
     currency:int = Field(default=0, nullable=False)
     active: bool = True  # default value
+    companyno: str
     
     
 #schema/ pydantic
 class Pcompany(BaseModel):
     createdby: Optional[datetime]= None
     modifiedby: Optional[datetime]= None
+    companyno:str 
     companyname: str = Field(nullable=False)
     companycode: str = Field(nullable=False)
     adress: Optional[str]=None
@@ -93,7 +97,8 @@ class CompanyRead(BaseModel):
     gstno: Optional[str]  
     currency:Optional[int]
     currencycode: Optional[str] = None
-    active: bool 
+    active: bool     
+    companyno: str
     model_config = {
         "from_attributes": True,        
         "json_encoders": {
@@ -103,6 +108,7 @@ class CompanyRead(BaseModel):
 
 class CompanySearch(BaseModel):
     id: int
+    companyno: str
     companyname: str
     companycode: str
     adress: Optional[str]
@@ -170,6 +176,7 @@ def company_search(
 
      query = db.query(
         Company.id,
+        Company.companyno,
         Company.companycode,
         Company.companyname,
         Company.adress,
@@ -198,6 +205,7 @@ def company_search(
      return [
         {
             "id": r.id,
+            "companyno": r.companyno,
             "companycode": r.companycode,
             "companyname": r.companyname,
             "adress": r.adress,
@@ -250,6 +258,7 @@ def get_company(
                 modifiedon=company.modifiedon,
                 companyname=company.companyname,
                 companycode=company.companycode,
+                companyno=company.companyno,
                 adress=company.adress,
                 phone=company.phone,
                 emailid=company.emailid,
@@ -266,33 +275,41 @@ def get_company(
 
 
 @router.get("/companylist/{companyid}",response_model=List[CompanyRead])
-def company_list(companyid: int,session: Session=Depends(get_session)):
+def company_list(companyid: int,session: Session=Depends(get_session),
+                 current_user: dict= Depends(get_current_user)
+                 
+                 ):
+    
     from routes.company import Company
     from routes.currecny import Currency
+
     
     statement = select(Company, Currency.currencycode).join(Currency, Company.currency == Currency.id, isouter=True).where(and_(Company.active == True,Company.id==companyid)).order_by(Company.id.desc())
-    results = session.exec(statement)
-    company_list = [
+    results = session.exec(statement).all()
+    company_list = []
+
+    for company, currency_code in results:
+        company_list.append(
         CompanyRead(
             id=company.id,
-            cancel=company.cancel,
-            createdby=company.createdby,    
+            cancel=getattr(company, "cancel", "F"),
+            createdby=company.createdby,
             createdon=company.createdon,
             modifiedby=company.modifiedby,
             modifiedon=company.modifiedon,
-            companyname=company.companyname,              
+            companyname=company.companyname,
             companycode=company.companycode,
-            adress=company.adress,
-            phone=company.phone,
+            adress=company.adress or "",
+            phone=company.phone or "",
             emailid=company.emailid,
-            contactperson=company.contactperson,
-            gstno=company.gstno,
-            currency=company.currency,
-            currencycode=currency_code or "N/A",
-            active=company.active
+            contactperson=company.contactperson or "",
+            gstno=company.gstno or "",
+            currency=company.currency or 0,
+            currencycode=currency_code or "N/A",  # <- field name must match CompanyRead
+            active=company.active,
+            companyno=company.companyno or ""
         )
-        for company, currency_code in results
-    ]
+    )
     return company_list
 
 

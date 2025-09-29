@@ -5,6 +5,7 @@ from pydantic import  validator, BaseModel
 from typing import List, Optional
 from routes.commonflds import CommonFields  
 from datetime import datetime  
+from .userauth import get_current_user
 
 router = APIRouter( tags=["Country"])
 
@@ -97,7 +98,8 @@ def update_country(id :int, country: CountryUpdate, session: Session= Depends(ge
     return db_country
 
 @router.get("/country/", response_model=List[CountryRead])
-def read_countries(skip: int = 0, limit: int = 10, session: Session = Depends(get_session)):
+def read_countries(skip: int = 0, limit: int = 10, session: Session = Depends(get_session),
+                   current_user: dict = Depends(get_current_user)):
     countries = session.exec(select(Country).offset(skip).limit(limit)).all()
     return countries
 

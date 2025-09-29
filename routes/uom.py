@@ -7,6 +7,7 @@ from typing import List, Optional,Dict, Any
 from routes.commonflds import CommonFields
 from datetime import datetime, timedelta, date
 from routes.company import Company  
+from routes.userauth import get_current_user
 
 router = APIRouter(tags=["UOM"])
 
@@ -111,7 +112,8 @@ def create_uom(uom: PUOM, session: Session = Depends(get_session)):
     return db_uom 
   
 @router.post("/uom/{uom_id}", response_model=UOMRead)
-def update_uom(uom_id: int, uom_update: UOMUpdate, session: Session = Depends(get_session)):
+def update_uom(uom_id: int, uom_update: UOMUpdate, session: Session = Depends(get_session),
+               current_user: dict=Depends(get_current_user)):
     db_uom = session.get(UOM, uom_id)
     if not db_uom:
         raise HTTPException(status_code=404, detail="UOM not found")
@@ -163,7 +165,8 @@ def search_uom(
 
 
 @router.get("/uomlist/{company_id}/",response_model= UomResponse)
-def uom_list( company_id: int,skip: int = 0, limit: int = 10,  session: Session=Depends(get_session)):
+def uom_list( company_id: int,skip: int = 0, limit: int = 10,  session: Session=Depends(get_session)
+             ,current_user:dict=Depends(get_current_user)):
     uom_list = session.exec(
         select(UOM, Company.companyname,Company.id).join(Company, UOM.companyid == Company.id ,isouter=True )
         .where( and_( UOM.active==True 
