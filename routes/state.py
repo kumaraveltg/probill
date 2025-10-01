@@ -6,6 +6,7 @@ from typing import List, Optional
 from routes.commonflds import CommonFields  
 from datetime import datetime  
 from routes.country import Country  
+from routes.userauth import get_current_user
 
 router = APIRouter( tags=["State"])
 
@@ -150,7 +151,8 @@ def search_state(
     ]
 
 @router.get("/states/", response_model=StateListResponse)
-def read_states(skip: int = 0, limit: int = 10, session: Session = Depends(get_session)):
+def read_states(skip: int = 0, limit: int = 10, session: Session = Depends(get_session),
+                current_user :dict = Depends(get_current_user)):
     states = session.exec(select(State).order_by(State.statename).offset(skip).limit(limit)).all()
     totalcount= session.exec(select(func.count()).select_from(State)).one()
     

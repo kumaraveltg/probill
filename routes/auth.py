@@ -27,6 +27,10 @@ class GlobalParams(BaseModel):
     companycode: str | None = None
 global_params = GlobalParams()
 
+class GlobalParamsRequest(BaseModel):
+    username: str | None = None
+    companyno: str | None = None
+
 SECRET_KEY = "mysecret"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 3
@@ -91,11 +95,11 @@ def set_global_params(username: str, companyno: str, db: Session):
     global_params.companyid = company.id
     global_params.companycode = company.companycode
 
-    print(global_params.companyid) 
+    
     return global_params
  
  
-@router.post("/set_company")
-def set_company(username: str, companyno: str, db: Session = Depends(get_session)):
-    params = set_global_params(username, companyno, db)
+@router.post("/set_globalparams")
+def set_company(request: GlobalParamsRequest, db: Session = Depends(get_session)):
+    params = set_global_params(request.username, request.companyno, db)
     return {"status": "ok", "params": params.dict()}

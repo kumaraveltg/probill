@@ -5,7 +5,7 @@ from pydantic import  validator, BaseModel
 from typing import List, Optional
 from routes.commonflds import CommonFields  
 from datetime import datetime  
-from .userauth import get_current_user
+from routes.userauth import get_current_user
 
 router = APIRouter( tags=["Country"])
 

@@ -131,7 +131,7 @@ def search_uom(
      companyid: int,
      field: str = Query(...),
      value: str = Query(...),     
-    db: Session = Depends(get_session)
+     db: Session = Depends(get_session)
 ):
     Query = db.query(
         UOM.id,

@@ -8,6 +8,7 @@ from datetime import datetime
 from routes.company import Company
 from routes.state import State
 from routes.country import Country
+from routes.userauth import get_current_user
 
 router = APIRouter( tags=["City"])
 
@@ -171,7 +172,8 @@ def search_state(field: str = Query(...) , value: str = Query(...),
 ]
    
 @router.get("/cities/", response_model=CityResponse)
-def read_cities(skip: int = 0, limit: int = 10, session : Session = Depends(get_session)):
+def read_cities(skip: int = 0, limit: int = 10, session : Session = Depends(get_session)
+                ,current_user: dict = Depends(get_current_user)):
     cities = session.exec(select(City).order_by (City.cityname).offset(skip).limit(limit)).all()
     totalcount = session.exec(select(func.count()).select_from(City)).one()
     city_list = []

@@ -1,5 +1,5 @@
-from fastapi import APIRouter,  HTTPException,Depends
-from sqlmodel import Session, select,SQLModel,Field,Column,create_engine
+from fastapi import APIRouter,  HTTPException,Depends,Query
+from sqlmodel import Session, select,SQLModel,Field,Column,create_engine,and_,func
 from .db import engine, get_session
 from sqlalchemy.dialects.postgresql import ARRAY, INTEGER
 from pydantic import EmailStr,validator
@@ -8,6 +8,7 @@ from datetime import datetime,timedelta
 from pydantic import BaseModel
 from routes.utils import hash_password
 from routes.company import Company 
+from routes.userauth import get_current_user
 
 
 
@@ -114,10 +115,28 @@ class UserWithCompany(BaseModel):
     createdby: str
     createdon: datetime
     modifiedby: str
-    modifiedon: datetime
+    modifiedon: datetime 
+    class Config:
+        from_attributes = True
    
+class UsersSearch(BaseModel):
+   id : int
+   username: str
+   firstname: str
+   emailid: str
+   userroleids: List[int]
+   active: bool
+   companyid: Optional[int] = None 
+   companyno: str
+   companyname: str | None = None
 
+class UserResponse(BaseModel):
+    list_users: List[UserWithCompany]  
+    total: int
 
+class Config:
+        orm_mode = True
+   
 # ✅ Create user
 @router.post("/users/", response_model=Puser)
 def create_user(user: Puser):
@@ -140,6 +159,19 @@ def create_user(user: Puser):
         session.refresh(user_data)
         return Puser.from_orm(user_data)
 #
+
+@router.post("/updateuser/{id}")
+def update_user(id: int,update_user:Upduser,session: Session=Depends(get_session)):
+    db_users = session.get(Users,id)
+    if not db_users:
+       raise HTTPException(status_code=404,detail="User name not found")
+    for key,Value in update_user.dict(exclude_unset=True).items():
+       setattr(db_users,key,Value) 
+    session.add(db_users)
+    session.commit()
+    session.refresh(db_users)
+    return {"message":f"User - {db_users.username} has been updated"}
+
 
 @router.get("/userlist",response_model=List[UserWithCompany])
 def users_list(session: Session=Depends(get_session)):
@@ -179,22 +211,93 @@ def users_list(session: Session=Depends(get_session)):
         for row in results
     ]
     return get_users_list
-    
 
-@router.post("/updateuser/{id}")
-def update_user(id: int,update_user:Upduser,session: Session=Depends(get_session)):
-    db_users = session.get(Users,id)
-    if not db_users:
-       raise HTTPException(status_code=404,detail="User name not found")
-    for key,Value in update_user.dict(exclude_unset=True).items():
-       setattr(db_users,key,Value) 
-    session.add(db_users)
-    session.commit()
-    session.refresh(db_users)
-    return {"message":f"User - {db_users.username} has been updated"}
+@router.get("/search/{companyid}", response_model=List[UsersSearch])
+def search_user( 
+     companyid: int,
+     field: str = Query(...),
+     value: str = Query(...),     
+    db: Session = Depends(get_session)
+):
+    Query = db.query(
+        Users.id,
+    Users.username,
+    Users.firstname,
+    Users.emailid,
+    Users.userroleids,
+    Users.active,
+    Users.companyid,
+    Company.companyname,
+    Company.companyno
+    ).join(Company, Users.companyid == Company.id ,isouter=True ).filter(Company.id== companyid) 
+
+    if field == "username":
+        Query = Query.filter(Users.username.ilike(f"%{value}%"))
+    elif field == "firstname":
+        Query = Query.filter(Users.firstname.ilike(f"%{value}%"))
+    elif field == "companyname":
+        Query = Query.filter(Company.companyname.ilike(f"%{value}%"))
+    else:
+        raise HTTPException(status_code=400, detail="Invalid search field")
+    
+    results = Query.all()  
+    return [
+        {   "id": r.id,
+            "username": r.username,
+            "firstname":r.firstname,
+            "emailid" : r.emailid, 
+            "userroleids":r.userroleids,
+            "active" : r.active,
+            "companyid":r.companyid,
+            "companyname": r.companyname,
+            "companyno" :r.companyno
+        }   
+        for r in results
+    ]
+
+@router.get("/users/{companyid}", response_model=UserResponse)
+def users_company(
+    companyid: int,
+    skip: int = 0,
+    limit: int = 10,
+    session: Session = Depends(get_session),
+    current_user: Dict = Depends(get_current_user)
+):
+    query = (
+        select(Users, Company.companyname, Company.id, Company.companyno)
+        .join(Company, Users.companyid == Company.id, isouter=True)
+        .where(and_(Users.active == True, Users.companyid == companyid))
+        .order_by(Users.username)
+        .offset(skip)
+        .limit(limit)
+    )
+
+    user_list = session.exec(query).all()
+
+    totalcount = session.exec(
+        select(func.count(Users.id)).where(
+            and_(Users.active == True, Users.companyid == companyid)
+        )
+    ).one()
+
+    result = []
+    for row in user_list:
+        users = row[0]
+        companyname = row[1]
+        companyid = row[2]
+        companyno = row[3]
+
+        user_data = UserWithCompany.from_orm(users)
+        user_data.companyname = companyname
+        user_data.companyid = companyid
+        user_data.companyno = companyno
+        result.append(user_data)
+
+    return { "list_users": result,"total": totalcount}
+
+
 
 #delete
-
 @router.delete("/delete/{id}")
 def delete_user(id: int,session: Session=Depends(get_session)):
    db_user = session.get(Users,id)
