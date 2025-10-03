@@ -1,5 +1,5 @@
-from fastapi import APIRouter,  HTTPException,Depends
-from sqlmodel import Session, select,SQLModel,Field,Column,Relationship
+from fastapi import APIRouter,  HTTPException,Depends,Query
+from sqlmodel import Session, select,SQLModel,Field,Column,func,and_
 from .db import engine, get_session
 from sqlalchemy.dialects.postgresql import ARRAY, INTEGER,JSON
 from pydantic import EmailStr,validator,BaseModel
@@ -7,6 +7,7 @@ from typing import List, Optional,Dict, Any
 from routes.commonflds import CommonFields  
 from datetime import datetime
 from routes.company import Company
+from routes.userauth import get_current_user
 
 router = APIRouter(tags=["UserRole"])
 
@@ -23,7 +24,7 @@ class UserRole(CommonFields, table=True):
     permissions: list[dict] = Field(
         sa_column=Column(JSON), default=[]
     )
-    
+    companyno: str = Field(nullable=False)
     
  
 #schema/ pydantic
@@ -31,6 +32,7 @@ class PUserRole(BaseModel):
     createdby: str = Field(nullable=False)
     modifiedby: str = Field(nullable=False)
     companyid: int = Field(default= 0,nullable=False)
+    companyno: str
     rolename: str = Field(nullable=False)
     permissions: Optional[List[Dict[str, Any]]] = []
     
@@ -44,6 +46,7 @@ class PUserRole(BaseModel):
 class UpdateUserRole(BaseModel):
     modifiedby: Optional[str]= None
     companyid: Optional[int] = None
+    companyno: str
     rolename: Optional[str] = None
     permissions: Optional[List[Dict[str, Any]]] = None
     active: Optional[bool] = None
@@ -56,6 +59,7 @@ class UserRoleRead(BaseModel):
     modifiedon: datetime        
     companyid: int
     companyname: Optional[str] = None
+    companyno: Optional[str]
     rolename: str
     permissions: List[Dict[str, Any]]
     active: bool
@@ -63,8 +67,20 @@ class UserRoleRead(BaseModel):
     class Config:
         orm_mode = True
 
+class UserRoleSearch(BaseModel):
+    id: int
+    companyid: int
+    companyname: Optional[str] = None
+    companyno: str
+    rolename: str
+    permissions: List[Dict[str, Any]]
+
+class UserRoleResponse(BaseModel):
+    user_rolelist: list[UserRoleRead]
+    total: int
+
 @router.post("/adduserrole", response_model=PUserRole)
-def add_userrole(userrole: PUserRole, session: Session = Depends(get_session)):
+def add_userrole(userrole: PUserRole, session: Session = Depends(get_session),current_user:dict= Depends(get_current_user)):
     if not userrole.rolename:
         raise HTTPException(status_code=400, detail="Role name is required.") 
     if session.exec(select(UserRole).where(UserRole.rolename == userrole.rolename, UserRole.companyid == userrole.companyid)).first():
@@ -77,7 +93,7 @@ def add_userrole(userrole: PUserRole, session: Session = Depends(get_session)):
 
 
 @router.post("/updateuserrole/{userrole_id}", response_model=UpdateUserRole)
-def update_userrole(userrole_id: int, userrole: UpdateUserRole, session: Session = Depends(get_session)):
+def update_userrole(userrole_id: int, userrole: UpdateUserRole, session: Session = Depends(get_session),current_user:dict= Depends(get_current_user)):
     db_userrole = session.get(UserRole, userrole_id)
     if not db_userrole:
         raise HTTPException(status_code=404, detail="User role not found.")
@@ -89,21 +105,61 @@ def update_userrole(userrole_id: int, userrole: UpdateUserRole, session: Session
     session.refresh(db_userrole)
     return db_userrole  
 
-@router.get("/getuserroles", response_model=List[UserRoleRead])
+@router.get("/search/{companyid}",response_model=list[UserRoleSearch])
+def userrole_search(companyid: int,
+     field: str = Query(...),
+     value: str = Query(...),     
+     db: Session = Depends(get_session)):
+ Query = db.query(
+     UserRole.id,     
+     UserRole.companyid,
+     Company.companyno,
+     Company.companyname,
+     UserRole.rolename,
+     UserRole.permissions,
+ ).join(Company,UserRole.companyid==Company.id,isouter=True).filter(Company.id==companyid)
+
+ if field == "rolename":
+     Query == Query.filter(UserRole.rolename.ilike(f"%{value}%"))    
+ elif field == "companyname":
+     Query == Query.filter(Company.Companyname.ilike(f"%{value}%"))
+ else:
+     raise HTTPException(status_code=400,detail="Invaild Search")
+
+ result = Query.all()
+
+ return [
+        {
+            "id":r.id,
+            "companyid":r.companyid,
+            "companyno":r.companyno,
+            "companyname":r.companyname,
+            "rolename": r.rolename, 
+            "permissions": r.permissions
+            
+        } for r in result
+        ]
+
+
+@router.get("/getuserroles/{companyid}", response_model= UserRoleResponse)
 def get_userroles(
-    companyid: int | None = None,
-    companyname: str | None = None,
-    session: Session = Depends(get_session)
+    companyid: int | None = None, skip: int = 0, limit: int = 10,
+    session: Session = Depends(get_session),current_user:dict= Depends(get_current_user)
 ):
     from routes.company import Company  # Import here to avoid circular import
     from routes.user_role import UserRole
 
-    query = select(UserRole, Company.companyname).join(Company, UserRole.companyid == Company.id, isouter=True).order_by(UserRole.rolename.desc())
-    if companyid is not None:
-        query = query.where(UserRole.companyid == companyid)
-    if companyname is not None:
-        query = query.join(Company).where(Company.companyname.ilike(f"%{companyname}%"))
-         
+    query = (
+    select(UserRole, Company.companyname)
+    .join(Company, UserRole.companyid == Company.id, isouter=True)
+    .where(and_(Company.active == True, Company.id == companyid))
+    .order_by(UserRole.rolename.desc())
+    .offset(skip)
+    .limit(limit)
+    )
+    
+    totalcount = session.exec(select(func.count(UserRole.id)).where(and_(Company.active==True,Company.id==companyid))).one()
+             
     results = session.exec(query).all()
     if not results:
         raise HTTPException(status_code=404, detail="User roles not found")
@@ -116,6 +172,7 @@ def get_userroles(
             modifiedby=userrole.modifiedby,
             modifiedon=userrole.modifiedon,
             companyid=userrole.companyid,
+            companyno= userrole.companyno,
             companyname=companyname,
             rolename=userrole.rolename,
             permissions=userrole.permissions,
@@ -123,7 +180,7 @@ def get_userroles(
         )
         for userrole, companyname in results
     ]
-    return userrole_list
+    return { "user_rolelist": userrole_list,"total": totalcount}
 
 @router.get("/getuserroleid/{userrole_id}", response_model=UserRoleRead )
 def get_userrole_by_id(userrole_id: int, session: Session = Depends(get_session)):
@@ -141,6 +198,7 @@ def get_userrole_by_id(userrole_id: int, session: Session = Depends(get_session)
         modifiedby=userrole.modifiedby,
         modifiedon=userrole.modifiedon,
         companyid=userrole.companyid,
+        companyno=userrole.companyno,
         companyname=companyname,
         rolename=userrole.rolename,
         permissions=userrole.permissions,

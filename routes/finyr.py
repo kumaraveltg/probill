@@ -1,5 +1,5 @@
-from fastapi import APIRouter,  HTTPException,Depends
-from sqlmodel import Session, select,SQLModel,Field,delete,update
+from fastapi import APIRouter,  HTTPException,Depends,Query
+from sqlmodel import Session, select,SQLModel,Field,delete, and_,func,cast,String
 from .db import engine, get_session
 from sqlalchemy.dialects.postgresql import ARRAY, INTEGER,JSON 
 from pydantic import EmailStr,validator,BaseModel,model_validator
@@ -7,6 +7,7 @@ from typing import List, Optional,Dict, Any
 from routes.commonflds import CommonFields  
 from datetime import datetime, timedelta, date
 from routes.company import Company   
+from routes.userauth import get_current_user
 
 router = APIRouter( tags=["FinancialYear"])
 
@@ -64,13 +65,17 @@ class Pfinyrdetail(BaseModel):
 
 class FinYrResponse(BaseModel):
     finyr: FinYrheader
-    periods: List[Finyrdetail]  
+    periods: List[Finyrdetail]   
     model_config = {
         "from_attributes": True,
         "json_encoders": {
             datetime: lambda v: v.strftime("%d/%m/%Y %H:%M:%S") if v else None
         }
     }
+
+class FinyrgetResponse(BaseModel):
+    finyrs: List[FinYrheader]
+    total: int
 
 class Finyrupdate(BaseModel):   
     modifiedby: str = Field(nullable=False)
@@ -90,6 +95,20 @@ class Finyrupdate(BaseModel):
             self.enddate = self.startdate.replace(year=self.startdate.year + 1) - timedelta(days=1)
         return self    
 
+class FinyrRead(BaseModel):
+    id: int
+    createdby: str  
+    modifiedby: str 
+    finyrname: str  
+    startdate: date  
+    enddate: Optional[date] = None
+    active: bool = True 
+class FinyrSearch(BaseModel):
+    id: int
+    finyrname: str
+    startdate: date
+    enddate: Optional[date]= None
+    active: bool=True
 
 def generate_periods(start_date: date, end_date: date) -> List[Pfinyrdetail]:
     periods = []
@@ -193,10 +212,61 @@ def get_finyr(finyr_id: int, session: Session = Depends(get_session)):
     periods = session.exec(select(Finyrdetail).where(Finyrdetail.finyrid == finyr_id).order_by(Finyrdetail.periodno)).all()
     return FinYrResponse(finyr=finyr, periods=periods)
 
-@router.get("/", response_model=List[FinYrheader])
-def list_finyrs(session: Session = Depends(get_session)):
-    finyrs = session.exec(select(FinYrheader).order_by(FinYrheader.startdate.desc())).all()
-    return finyrs
+@router.get("/finyr/search",response_model=list[FinyrSearch])
+def finyr_search( 
+     field: str = Query(...),
+     value: str = Query(...),     
+     db: Session = Depends(get_session)):
+ query = db.query(
+     FinYrheader.id,   
+     FinYrheader.finyrname,
+     FinYrheader.startdate,
+     FinYrheader.enddate,
+     FinYrheader.active,
+    ) 
+
+ if field == "finyrname":
+    query = query.filter(FinYrheader.finyrname.ilike(f"%{value}%"))
+ elif field == "startdate":
+    # cast date to string for partial search
+    query = query.filter(cast(FinYrheader.startdate, String).ilike(f"%{value}%"))
+ else:
+    raise HTTPException(status_code=400, detail="Invalid Search")
+
+ result = query.all()
+
+ return [
+        {
+            "id":r.id,
+            "finyrname":r.finyrname,
+            "startdate":r.startdate,
+            "enddate":r.enddate,
+            "active": r.active,  
+            
+        } for r in result
+        ]
+
+
+
+@router.get("/header", response_model=FinyrgetResponse)
+def list_finyrs(skip: int = 0,limit:int = 10,session: Session = Depends(get_session),current_user:dict=Depends(get_current_user)):
+    finyrs = session.exec(select(FinYrheader).order_by(FinYrheader.startdate.desc()).offset(skip).limit(limit) ).all()
+    totalcount = session.exec(select(func.count(FinYrheader.id))).one()
+    if not finyrs:
+        raise HTTPException(status_code=404, detail="finyrs not found")
+    finyr_list=[
+        FinyrRead(
+            id=finyrs.id,
+            createdby = finyrs.createdby, 
+            modifiedby= finyrs.modifiedby,
+            finyrname = finyrs.finyrname,
+            startdate = finyrs.startdate,
+            enddate = finyrs.enddate,
+            active = finyrs.active  
+
+        )
+    ]
+    return {"finyrs":finyr_list,"total":totalcount}
 
 @router.delete("/{finyr_id}", response_model=dict)
 def delete_finyr(finyr_id: int, session: Session = Depends(get_session)):    

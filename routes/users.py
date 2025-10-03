@@ -105,6 +105,7 @@ class Upduser(BaseModel):
 class UserWithCompany(BaseModel):
     id: int
     username: str
+    password: str
     firstname: str
     emailid: str
     userroleids: List[int]
@@ -122,6 +123,7 @@ class UserWithCompany(BaseModel):
 class UsersSearch(BaseModel):
    id : int
    username: str
+   password: str
    firstname: str
    emailid: str
    userroleids: List[int]
@@ -139,7 +141,7 @@ class Config:
    
 # ✅ Create user
 @router.post("/users/", response_model=Puser)
-def create_user(user: Puser):
+def create_user(user: Puser , current_user: dict = Depends(get_current_user)):
     with Session(engine) as session:
         user_dict = user.dict()
         user_dict["hpassword"] = hash_password(user_dict.get("password", "123456"))
@@ -161,7 +163,7 @@ def create_user(user: Puser):
 #
 
 @router.post("/updateuser/{id}")
-def update_user(id: int,update_user:Upduser,session: Session=Depends(get_session)):
+def update_user(id: int,update_user:Upduser,session: Session=Depends(get_session),current_user: dict = Depends(get_current_user)):
     db_users = session.get(Users,id)
     if not db_users:
        raise HTTPException(status_code=404,detail="User name not found")
@@ -196,6 +198,7 @@ def users_list(session: Session=Depends(get_session)):
        UserWithCompany(
             id=row.id,
             username=row.username,
+            password = row.password,
             firstname=row.firstname,
             emailid=row.emailid,
             userroleids=row.userroleids,
@@ -291,7 +294,7 @@ def users_company(
         user_data.companyname = companyname
         user_data.companyid = companyid
         user_data.companyno = companyno
-        result.append(user_data)
+        result.append(user_data.dict())
 
     return { "list_users": result,"total": totalcount}
 
