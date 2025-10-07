@@ -25,7 +25,13 @@ class UserRole(CommonFields, table=True):
         sa_column=Column(JSON), default=[]
     )
     companyno: str = Field(nullable=False)
-    
+    model_config = {
+        "from_attributes": True,
+        "json_encoders": {
+            datetime: lambda v: v.strftime("%d/%m/%Y %H:%M:%S") if v else None
+        }
+    }
+
  
 #schema/ pydantic
 class PUserRole(BaseModel):
@@ -62,10 +68,13 @@ class UserRoleRead(BaseModel):
     companyno: Optional[str]
     rolename: str
     permissions: List[Dict[str, Any]]
-    active: bool
-
-    class Config:
-        orm_mode = True
+    active: bool 
+    model_config = {
+            "from_attributes": True,
+            "json_encoders": {
+                datetime: lambda v: v.strftime("%d/%m/%Y %H:%M:%S") if v else None
+            }
+        }
 
 class UserRoleSearch(BaseModel):
     id: int

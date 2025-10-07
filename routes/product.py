@@ -1,13 +1,16 @@
-from fastapi import APIRouter, HTTPException, Depends
-from sqlmodel import Session, select, SQLModel, Field, delete, update
+from fastapi import APIRouter, HTTPException, Depends,Query
+from sqlmodel import Session, select, SQLModel, Field, delete, update,func,and_
 from .db import engine, get_session
 from sqlalchemy.dialects.postgresql import ARRAY, INTEGER, JSON
+from sqlalchemy.orm import aliased
 from pydantic import EmailStr, validator, BaseModel, model_validator
 from typing import List, Optional, Dict, Any
 from routes.commonflds import CommonFields
-from datetime import datetime, timedelta, date
+from datetime import datetime
 from routes.company import Company
-from routes.uom import UOM as uom
+from routes.uom import UOM  
+from routes.userauth import get_current_user
+from routes.taxmaster import TaxHeader
 
 router = APIRouter(tags=["Product"])
 class ProductHeader(CommonFields, table=True):
@@ -67,6 +70,40 @@ class ProductUpdate(BaseModel):
             datetime: lambda v: v.strftime("%d/%m/%Y %H:%M:%S") if v else None
         }
     }
+
+class GetProduct(BaseModel):
+    createdby: str = Field(nullable=False)
+    modifiedby: str = Field(nullable=False)
+    companyid: int = Field(default=0, nullable=False)
+    companyname: str
+    companyno: Optional[str] = None
+    productcode: str = Field(nullable=False)
+    productname: str = Field(nullable=False)    
+    productspec: Optional[str] = None
+    selling_uom: int = Field(default=0, nullable=False)
+    purchase_uom: int = Field(default=0, nullable=False)
+    selling_price: float = Field(default=0.0, nullable=False)
+    cost_price: float = Field(default=0.0, nullable=False)
+    hsncode: Optional[str] = None
+    taxname:int = Field(default=0, nullable=False)
+    taxrate: float = Field(default=0.0, nullable=False)
+    active: bool = True 
+    modifiedon: datetime
+    createdon: datetime
+    suom: str
+    puom: str
+    model_config = {
+        "from_attributes": True,
+        "json_encoders": {
+            datetime: lambda v: v.strftime("%d/%m/%Y %H:%M:%S") if v else None
+        }
+    }
+
+class ProductResponse(BaseModel):
+    total: int
+    productlist : List[GetProduct]
+
+
 @router.post("/productcreate", response_model=ProductHeader)
 def create_product(product: PProduct, session: Session = Depends(get_session)):
     db_product = session.exec(select(ProductHeader).where(ProductHeader.productcode == product.productcode, ProductHeader.companyid == product.companyid)).first()
@@ -94,17 +131,79 @@ def update_product(productid: int, product: ProductUpdate, session: Session = De
     session.refresh(db_product)
     return db_product
 
-@router.get("/products/{companyid}/{product_id}", response_model=ProductHeader)
-def get_product(companyid: int, product_id: int, session: Session = Depends(get_session)):
-    product = session.exec(
-        select(ProductHeader).where(
-            ProductHeader.companyid == companyid,
-            ProductHeader.id == product_id
+@router.get("/products/{companyid}", response_model= ProductResponse)
+def get_product(companyid: int, skip: int = 0, limit: int = 100, session: Session = Depends(get_session)):
+    # Aliases
+    p = aliased(ProductHeader)
+    su = aliased(UOM)
+    pu = aliased(UOM)
+    c = aliased(Company)
+    t = aliased(TaxHeader)
+
+    # Query
+    query = (
+        select(
+            p,
+            su.uomcode.label("suom"),
+            su.id.label("sellingid"),
+            pu.uomcode.label("puom"),
+            pu.id.label("purchaseid"),
+            c.companyname,
+            c.id.label("companyid"),
+            c.companyno,
+            t.taxname,
+            t.id.label("taxmasterid"),
         )
-    ).first()
-    if not product:
+        .join(c, p.companyid == c.id)
+        .join(su, p.selling_uom == su.id)
+        .join(pu, p.purchase_uom == pu.id, isouter=True)
+        .join(t, p.taxname == t.id, isouter=True)
+        .where(and_(su.active == True, c.id == companyid))
+        .order_by(p.productname)
+        .offset(skip)
+        .limit(limit)
+    )
+
+    product_rows = session.exec(query).all()
+
+    # Total count
+    totalcount = session.exec(
+        select(func.count(p.id)).where(p.companyid == companyid)
+    ).one()
+
+    if not product_rows:
         raise HTTPException(status_code=404, detail="Product not found")
-    return product
+
+    # Convert query rows into list of dicts (with created/modified info)
+    productlist = [
+        {
+            "id": row[0].id,
+            "productcode": row[0].productcode,
+            "productname": row[0].productname,
+            "productspec": row[0].productspec,
+            "selling_price": row[0].selling_price,
+            "cost_price": row[0].cost_price,
+            "taxname": row[0].taxname,
+            "taxrate": row[0].taxrate,
+            "hsncode": row[0].hsncode,
+            "active": row[0].active,
+            "suom": row.suom,
+            "sellingid" :row.sellingid,
+            "puom": row.puom,
+            "companyid":row.companyid,
+            "companyname": row.companyname,
+            "companyno": row.companyno,
+            "taxmasterid": row.taxmasterid,
+            "createdby": row[0].createdby,
+            "createdon": row[0].createdon,
+            "modifiedby": row[0].modifiedby,
+            "modifiedon": row[0].modifiedon,
+        }
+        for row in product_rows
+    ]
+
+    return {"total": totalcount, "productlist": productlist}
+
 
 @router.delete("/productdelete/{productid}")
 def delete_product(productid: int, session: Session = Depends(get_session)):    

@@ -38,6 +38,13 @@ class Users(SQLModel, table=True):
     active: bool = True  # default value
     companyid: int = Field(default=1, nullable=False)
     companyno: str
+    model_config = {
+        "from_attributes": True,
+        "json_encoders": {
+            datetime: lambda v: v.strftime("%d/%m/%Y %H:%M:%S") if v else None
+        }
+     }
+
 
     def __post_init__(self):
         # Automatically hash password
@@ -116,9 +123,13 @@ class UserWithCompany(BaseModel):
     createdby: str
     createdon: datetime
     modifiedby: str
-    modifiedon: datetime 
-    class Config:
-        from_attributes = True
+    modifiedon: datetime    
+    model_config = {
+        "from_attributes": True,
+        "json_encoders": {
+            datetime: lambda v: v.strftime("%d/%m/%Y %H:%M:%S") if v else None
+        }
+    }
    
 class UsersSearch(BaseModel):
    id : int

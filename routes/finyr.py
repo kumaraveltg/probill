@@ -28,7 +28,7 @@ class Finyrdetail(SQLModel, table=True):
     startdate: date = Field(nullable=False)
     enddate: date = Field(nullable=False)
     periodno: int = Field(default=0, nullable=False)
-    status: str = Field(default ="Open",nullable=False)  # default value
+    status: str = Field(default ="Open",nullable=False)  # default value 
 
 class PFinYr(BaseModel):
     createdby: str = Field(nullable=False)
@@ -55,7 +55,7 @@ class Pfinyrdetail(BaseModel):
     startdate: date = Field(nullable=False)
     enddate: date = Field(nullable=False)
     periodno: int = Field(default=0, nullable=False)
-    status: str = Field(default ="Open",nullable=False)  # default value
+    status: str = Field(default ="Open",nullable=False)  # default value    
     model_config = {
         "from_attributes": True,
         "json_encoders": {
@@ -73,9 +73,7 @@ class FinYrResponse(BaseModel):
         }
     }
 
-class FinyrgetResponse(BaseModel):
-    finyrs: List[FinYrheader]
-    total: int
+
 
 class Finyrupdate(BaseModel):   
     modifiedby: str = Field(nullable=False)
@@ -103,12 +101,26 @@ class FinyrRead(BaseModel):
     startdate: date  
     enddate: Optional[date] = None
     active: bool = True 
+    createdon: datetime
+    modifiedon: datetime
+    model_config = {
+        "from_attributes": True,
+        "json_encoders": {
+            datetime: lambda v: v.strftime("%d/%m/%Y %H:%M:%S") if v else None,     
+            date: lambda v: v.strftime("%d/%m/%Y") if v else None        
+        }
+    }
+
 class FinyrSearch(BaseModel):
     id: int
     finyrname: str
     startdate: date
     enddate: Optional[date]= None
     active: bool=True
+
+class FinyrgetResponse(BaseModel):
+    finyrs: List[FinyrRead]
+    total: int
 
 def generate_periods(start_date: date, end_date: date) -> List[Pfinyrdetail]:
     periods = []
@@ -134,7 +146,28 @@ def generate_periods(start_date: date, end_date: date) -> List[Pfinyrdetail]:
 
     return periods
 
-@router.post("/", response_model=FinYrheader)
+@router.post("/generate_periods", response_model=list[Pfinyrdetail])
+def generate_periods_api(payload: dict):
+    try:
+        def parse_date(date_str):
+            for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+                try:
+                    return datetime.strptime(date_str, fmt).date()
+                except ValueError:
+                    continue
+            raise ValueError(f"Invalid date format: {date_str}")
+
+        start_date = parse_date(payload["startdate"])
+        end_date = parse_date(payload["enddate"])
+
+        periods = generate_periods(start_date, end_date)
+        return periods
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/addfinyr", response_model=FinYrheader)
 def create_finyr(finyr: PFinYr, session: Session = Depends(get_session)):
     # Check for overlapping financial years
     overlapping_finyr = session.exec(
@@ -203,14 +236,6 @@ def update_finyr(finyr_id: int, finyr_update: Finyrupdate, session: Session = De
         session.commit()
 
     return finyr
-@router.get("/{finyr_id}", response_model=FinYrResponse)
-def get_finyr(finyr_id: int, session: Session = Depends(get_session)):
-    finyr = session.get(FinYrheader, finyr_id)
-    if not finyr:
-        raise HTTPException(status_code=404, detail="Financial year not found")
-
-    periods = session.exec(select(Finyrdetail).where(Finyrdetail.finyrid == finyr_id).order_by(Finyrdetail.periodno)).all()
-    return FinYrResponse(finyr=finyr, periods=periods)
 
 @router.get("/finyr/search",response_model=list[FinyrSearch])
 def finyr_search( 
@@ -249,24 +274,52 @@ def finyr_search(
 
 
 @router.get("/header", response_model=FinyrgetResponse)
-def list_finyrs(skip: int = 0,limit:int = 10,session: Session = Depends(get_session),current_user:dict=Depends(get_current_user)):
-    finyrs = session.exec(select(FinYrheader).order_by(FinYrheader.startdate.desc()).offset(skip).limit(limit) ).all()
+def list_finyrs(
+    skip: int = 0,
+    limit: int = 10,
+    session: Session = Depends(get_session),
+    current_user: dict = Depends(get_current_user)
+):
+    finyrs = session.exec(
+        select(FinYrheader)
+        .order_by(FinYrheader.startdate.desc())
+        .offset(skip)
+        .limit(limit)
+    ).all()
+
     totalcount = session.exec(select(func.count(FinYrheader.id))).one()
+
     if not finyrs:
         raise HTTPException(status_code=404, detail="finyrs not found")
-    finyr_list=[
-        FinyrRead(
-            id=finyrs.id,
-            createdby = finyrs.createdby, 
-            modifiedby= finyrs.modifiedby,
-            finyrname = finyrs.finyrname,
-            startdate = finyrs.startdate,
-            enddate = finyrs.enddate,
-            active = finyrs.active  
 
+    # ✅ Correctly loop through the list
+    finyr_list = [
+        FinyrRead(
+            id=f.id,
+            createdby=f.createdby,
+            modifiedby=f.modifiedby,
+            finyrname=f.finyrname,
+            startdate=f.startdate,
+            enddate=f.enddate,
+            active=f.active,
+            createdon=f.createdon,
+            modifiedon=f.modifiedon,
         )
+        for f in finyrs
     ]
-    return {"finyrs":finyr_list,"total":totalcount}
+
+    # ✅ Ensure it matches FinyrgetResponse structure
+    return FinyrgetResponse(finyrs=finyr_list, total=totalcount)
+
+@router.get("/finyr/{finyr_id}", response_model=FinYrResponse)
+def get_finyr(finyr_id: int, session: Session = Depends(get_session)):
+    finyr = session.get(FinYrheader, finyr_id)
+    if not finyr:
+        raise HTTPException(status_code=404, detail="Financial year not found")
+
+    periods = session.exec(select(Finyrdetail).where(Finyrdetail.finyrid == finyr_id).order_by(Finyrdetail.periodno)).all()
+    return FinYrResponse(finyr=finyr, periods=periods)
+
 
 @router.delete("/{finyr_id}", response_model=dict)
 def delete_finyr(finyr_id: int, session: Session = Depends(get_session)):    
