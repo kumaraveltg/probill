@@ -72,6 +72,7 @@ class ProductUpdate(BaseModel):
     }
 
 class GetProduct(BaseModel):
+    id: int
     createdby: str = Field(nullable=False)
     modifiedby: str = Field(nullable=False)
     companyid: int = Field(default=0, nullable=False)
@@ -85,7 +86,8 @@ class GetProduct(BaseModel):
     selling_price: float = Field(default=0.0, nullable=False)
     cost_price: float = Field(default=0.0, nullable=False)
     hsncode: Optional[str] = None
-    taxname:int = Field(default=0, nullable=False)
+    taxname:Optional[str] = None
+    taxmasterid:int = Field(default=0, nullable=False)
     taxrate: float = Field(default=0.0, nullable=False)
     active: bool = True 
     modifiedon: datetime
@@ -102,6 +104,27 @@ class GetProduct(BaseModel):
 class ProductResponse(BaseModel):
     total: int
     productlist : List[GetProduct]
+
+from datetime import datetime
+from typing import Optional
+from pydantic import BaseModel, Field
+
+class ProductSearch(BaseModel):
+    id: int
+    companyid: int
+    companyname: str
+    companyno: str
+    productcode: str
+    productname: str
+    productspec: Optional[str] = None  # changed from int → str (and optional)
+    selling_uom: Optional[str] = None
+    purchase_uom: Optional[str] = None
+    hsncode: Optional[str] = None
+    taxname: Optional[str] = None       # changed from int → str
+    taxrate: Optional[float] = 0.0
+    active: bool = True
+    modifiedon: Optional[datetime] = None  # made optional
+    createdon: Optional[datetime] = None   # made optional
 
 
 @router.post("/productcreate", response_model=ProductHeader)
@@ -130,6 +153,91 @@ def update_product(productid: int, product: ProductUpdate, session: Session = De
     session.commit()
     session.refresh(db_product)
     return db_product
+
+@router.get("/product/search/{companyid}",response_model=List[ProductSearch])
+def product_search(
+    companyid: int,
+    field: str = Query(...),
+    value: str = Query(...),
+    db: Session = Depends(get_session)
+):
+    # Define table aliases for readability
+    p = aliased(ProductHeader)
+    su = aliased(UOM)
+    pu = aliased(UOM)
+    c = aliased(Company)
+    t = aliased(TaxHeader)
+
+    # Base query
+    query = (
+        db.query(
+            p.id,
+            p.productcode,
+            p.productname,
+            p.productspec,
+            p.taxrate,
+            p.hsncode,
+            p.active,
+            p.companyid,
+            c.companyname,
+            c.companyno,
+            su.uomcode.label("selling_uom_code"),
+            pu.uomcode.label("purchase_uom_code"),
+            t.taxname.label("taxname")
+        )
+        .join(c, p.companyid == c.id)
+        .join(su, p.selling_uom == su.id)
+        .outerjoin(pu, p.purchase_uom == pu.id)
+        .outerjoin(t, p.taxname == t.id)
+        .filter(
+            and_(
+                su.active == True,
+                c.id == companyid
+            )
+        )
+    )
+
+    # Dynamic filtering
+    if field == "productcode":
+        query = query.filter(p.productcode.ilike(f"%{value}%"))
+    elif field == "productname":
+        query = query.filter(p.productname.ilike(f"%{value}%"))
+    elif field == "productspec":
+        query = query.filter(p.productspec.ilike(f"%{value}%"))
+    else:
+        raise HTTPException(status_code=400, detail="Invalid search field")
+
+    results = query.all()
+    
+    #  ✅ Print results for debugging
+    print("🔍 Query Results:")
+    for r in results:
+        print(r)
+
+    # ✅ Optional: print the generated SQL for deeper debugging
+    print(str(query.statement.compile(compile_kwargs={"literal_binds": True})))
+
+    return [
+        {
+        "id": r.id,
+        "productcode": r.productcode,
+        "productname": r.productname,
+        "productspec": r.productspec,
+        "taxrate": r.taxrate,
+        "active": r.active,
+        "companyid": r.companyid,
+        "companyname": r.companyname,
+        "companyno": r.companyno,
+        "selling_uom": r.selling_uom_code,
+        "purchase_uom": r.purchase_uom_code,
+        "taxname": r.taxname,
+        "createdon": None,
+        "modifiedon": None,
+        }
+        for r in results  
+         
+    ]
+     
 
 @router.get("/products/{companyid}", response_model= ProductResponse)
 def get_product(companyid: int, skip: int = 0, limit: int = 100, session: Session = Depends(get_session)):
@@ -176,30 +284,32 @@ def get_product(companyid: int, skip: int = 0, limit: int = 100, session: Sessio
 
     # Convert query rows into list of dicts (with created/modified info)
     productlist = [
-        {
-            "id": row[0].id,
-            "productcode": row[0].productcode,
-            "productname": row[0].productname,
-            "productspec": row[0].productspec,
-            "selling_price": row[0].selling_price,
-            "cost_price": row[0].cost_price,
-            "taxname": row[0].taxname,
-            "taxrate": row[0].taxrate,
-            "hsncode": row[0].hsncode,
-            "active": row[0].active,
-            "suom": row.suom,
-            "sellingid" :row.sellingid,
-            "puom": row.puom,
-            "companyid":row.companyid,
-            "companyname": row.companyname,
-            "companyno": row.companyno,
-            "taxmasterid": row.taxmasterid,
-            "createdby": row[0].createdby,
-            "createdon": row[0].createdon,
-            "modifiedby": row[0].modifiedby,
-            "modifiedon": row[0].modifiedon,
-        }
-        for row in product_rows
+    {
+        "id": row[0].id,
+        "productcode": row[0].productcode,
+        "productname": row[0].productname,
+        "productspec": row[0].productspec,
+        "selling_price": row[0].selling_price,
+        "cost_price": row[0].cost_price,
+        "taxname": row[0].taxname,
+        "taxrate": row[0].taxrate,
+        "hsncode": row[0].hsncode,
+        "active": row[0].active,
+        "suom": row[1],        # su.uomcode
+        "selling_uom": row[2], # su.id
+        "puom": row[3],        # pu.uomcode
+        "purchase_uom": row[4],# pu.id
+        "companyname": row[5], # string
+        "companyid": row[6],   # int
+        "companyno": row[7],
+        "taxname": row[8],     # taxname string
+        "taxmasterid": row[9],         # taxmasterid int
+        "createdby": row[0].createdby,
+        "createdon": row[0].createdon,
+        "modifiedby": row[0].modifiedby,
+        "modifiedon": row[0].modifiedon,
+    }
+    for row in product_rows
     ]
 
     return {"total": totalcount, "productlist": productlist}
