@@ -3,7 +3,7 @@ from sqlmodel import Session, select, SQLModel, Field, delete, update,func,and_
 from .db import engine, get_session
 from sqlalchemy.dialects.postgresql import ARRAY, INTEGER, JSON
 from sqlalchemy.orm import aliased
-from pydantic import EmailStr, validator, BaseModel, model_validator
+from pydantic import   validator, BaseModel, model_validator
 from typing import List, Optional, Dict, Any
 from routes.commonflds import CommonFields
 from datetime import datetime
@@ -105,9 +105,7 @@ class ProductResponse(BaseModel):
     total: int
     productlist : List[GetProduct]
 
-from datetime import datetime
-from typing import Optional
-from pydantic import BaseModel, Field
+ 
 
 class ProductSearch(BaseModel):
     id: int
@@ -116,15 +114,16 @@ class ProductSearch(BaseModel):
     companyno: str
     productcode: str
     productname: str
-    productspec: Optional[str] = None  # changed from int → str (and optional)
-    selling_uom: Optional[str] = None
-    purchase_uom: Optional[str] = None
+    productspec: Optional[str] = None  
+    selling_uom: Optional[int] = None
+    purchase_uom: Optional[int] = None
+    selling_price: int
+    cost_price: int
     hsncode: Optional[str] = None
-    taxname: Optional[str] = None       # changed from int → str
+    taxname: int     # changed from int → str
     taxrate: Optional[float] = 0.0
     active: bool = True
-    modifiedon: Optional[datetime] = None  # made optional
-    createdon: Optional[datetime] = None   # made optional
+     
 
 
 @router.post("/productcreate", response_model=ProductHeader)
@@ -177,22 +176,26 @@ def product_search(
             p.productspec,
             p.taxrate,
             p.hsncode,
+            p.selling_price,
+            p.cost_price,
             p.active,
             p.companyid,
             c.companyname,
             c.companyno,
+            su.id.label("sellingid"),
+            pu.id.label("purchaseid"),
+            t.id.label("taxmasterid"),
             su.uomcode.label("selling_uom_code"),
             pu.uomcode.label("purchase_uom_code"),
-            t.taxname.label("taxname")
+            t.taxname.label("taxname"),
         )
         .join(c, p.companyid == c.id)
-        .join(su, p.selling_uom == su.id)
-        .outerjoin(pu, p.purchase_uom == pu.id)
+        .join(su, and_(p.selling_uom == su.id ,func.coalesce(su.active, True)))
+        .outerjoin(pu, and_(p.purchase_uom == pu.id,func.coalesce(pu.active, True)))
         .outerjoin(t, p.taxname == t.id)
         .filter(
             and_(
-                su.active == True,
-                c.id == companyid
+                 c.id == companyid
             )
         )
     )
@@ -223,16 +226,17 @@ def product_search(
         "productcode": r.productcode,
         "productname": r.productname,
         "productspec": r.productspec,
+        "hsncode": r.hsncode,
+        "selling_price": r.selling_price,
+        "cost_price" : r.cost_price,
         "taxrate": r.taxrate,
         "active": r.active,
         "companyid": r.companyid,
         "companyname": r.companyname,
         "companyno": r.companyno,
-        "selling_uom": r.selling_uom_code,
-        "purchase_uom": r.purchase_uom_code,
-        "taxname": r.taxname,
-        "createdon": None,
-        "modifiedon": None,
+        "selling_uom": r.sellingid,
+        "purchase_uom": r.purchaseid,
+        "taxname": r.taxmasterid,  
         }
         for r in results  
          

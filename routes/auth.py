@@ -25,6 +25,7 @@ class GlobalParams(BaseModel):
     companyno: str | None = None
     companyid: int | None = None
     companycode: str | None = None
+    companyname: str | None = None
 global_params = GlobalParams()
 
 class GlobalParamsRequest(BaseModel):
@@ -94,6 +95,7 @@ def set_global_params(username: str, companyno: str, db: Session):
     global_params.companyno = companyno
     global_params.companyid = company.id
     global_params.companycode = company.companycode
+    global_params.companyname = company.companyname
 
     
     return global_params
