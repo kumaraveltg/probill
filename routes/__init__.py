@@ -15,9 +15,10 @@ from .importdb import router as importdb_router
 from .auth import router as login_router
 from .hsn import router as hsn_router
 from .customer import router as customer_router
+from .invoice import router as invoice_router
 
 all_routers = [users_router, usersrole_router, 
                company_router,currency_router,finyr_router,uom_router,taxmaster_router,
                product_router,customer_router,country_router,state_router,city_router,
                dbexcel_router,importdb_router,login_router,hsn_router,
-               customer_router]
+               customer_router,invoice_router]

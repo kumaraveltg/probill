@@ -23,7 +23,7 @@ class CustomerHeader(CommonFields, table=True):
     customer_type:str 
     customername: str = Field(index=True, nullable=False) 
     contactperson: str = Field(default="", nullable=False)
-    currencyid:int = Field(foreign_key="currenc.id",nullable=False)
+    currencyid:int = Field(foreign_key="currency.id",nullable=False)
     customer_phone: str = Field(default="", nullable=False)
     customer_mobile: Optional[str] = None
     customer_email: Optional[str] = None
@@ -58,7 +58,7 @@ class CustomerContacts(SQLModel, table=True):
     __table_args__ = {"extend_existing": True} 
     id: int | None = Field(default=None, primary_key=True)
     customerid: int = Field(foreign_key="customer.id", nullable=False)
-    rowno: int = Field(default=1, nullable=False)
+    rowno: int = Field(default=1 )
     contact_type : str
     contact_person: str
     contact_mobile: str
@@ -82,7 +82,7 @@ class CustomerViewHeader(SQLModel,table=True):
     customer_type:str 
     customername: str = Field(index=True, nullable=False) 
     contactperson: str = Field(default="", nullable=False)
-    currencyid:int = Field(foreign_key="currenc.id",nullable=False)
+    currencyid:int = Field(foreign_key="currency.id",nullable=False)
     customer_phone: str = Field(default="", nullable=False)
     customer_mobile: Optional[str] = None
     customer_email: Optional[str] = None
@@ -110,23 +110,26 @@ class CustomerViewHeader(SQLModel,table=True):
     placeof_supply: str
     active: bool = True  # default value
     sameas:bool = False
+    currencycode: str
+    companyname:str
     model_config = {
         "from_attributes": True,
         "json_encoders": {
             datetime: lambda v: v.strftime("%d/%m/%Y %H:%M:%S") if v else None
         }
-    }
-
+    } 
 
 class PostCust_Contact(BaseModel):
-    id: int  
-    customerid: int  
-    rowno: int  
-    contact_type : str
-    contact_person: str
-    contact_mobile: str
-    contact_phone: str
-    contact_email: Optional[EmailStr]= None 
+    id: Optional[int] = None
+    contact_type: str
+    contact_person: Optional[str] = None
+    contact_mobile: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_email: Optional[str] = None
+    rowno: int
+class Config:
+        orm_mode = True  # <-- important
+
 
 
 class Postcustomer(BaseModel):
@@ -160,6 +163,11 @@ class Postcustomer(BaseModel):
     createdby:str
     modifiedby: str
     contacts: List[PostCust_Contact] = []
+class Config:
+        orm_mode = True  # <-- important
+
+
+ 
 
 class UpdateContact(BaseModel):
     id: Optional[int] = None       # existing contact id (for updates)
@@ -212,7 +220,7 @@ class CustomerSearch(BaseModel):
     customer_type:str 
     customername: str = Field(index=True, nullable=False) 
     contactperson: str = Field(default="", nullable=False)
-    currencyid:int = Field(foreign_key="currenc.id",nullable=False)
+    currencyid:int = Field(foreign_key="currency.id",nullable=False)
     customer_phone: str = Field(default="", nullable=False)
     customer_mobile: Optional[str] = None
     customer_email: Optional[str] = None
@@ -264,6 +272,7 @@ class CustomerContactsResponse(BaseModel):
 def create_customer(payload: Postcustomer, session: Session = Depends(get_session)):
     try:
         with session:
+            # Check if customer name already exists for the same company
             exists = session.exec(
                 select(CustomerHeader.customername)
                 .join(Company, Company.id == CustomerHeader.companyid)
@@ -276,20 +285,110 @@ def create_customer(payload: Postcustomer, session: Session = Depends(get_sessio
             if exists:
                 raise HTTPException(status_code=400, detail="Customer name already exists.")
 
-            db_customer = CustomerHeader.from_orm(payload)
-            session.add(db_customer)
-            session.flush()
+            # Create CustomerHeader manually (no from_orm)
+            db_customer = CustomerHeader(
+                companyid=payload.companyid,
+                companyno=payload.companyno,
+                customer_type=payload.customer_type,
+                customername=payload.customername,
+                contactperson=payload.contactperson,
+                currencyid=payload.currencyid,
+                customer_phone=payload.customer_phone,
+                customer_mobile=payload.customer_mobile,
+                customer_email=payload.customer_email,
+                customer_website=payload.customer_website,
+                address1=payload.address1,
+                address2=payload.address2,
+                cityid=payload.cityid,
+                stateid=payload.stateid,
+                countryid=payload.countryid,
+                pincode=payload.pincode,
+                shipping_address1=payload.shipping_address1,
+                shipping_address2=payload.shipping_address2,
+                shipping_cityid=payload.shipping_cityid,
+                shipping_stateid=payload.shipping_stateid,
+                shipping_countryid=payload.shipping_countryid,
+                shipping_pincode=payload.shipping_pincode,
+                gsttype=payload.gsttype,
+                gstin=payload.gstin,
+                placeof_supply=payload.placeof_supply,
+                sameas=payload.sameas,
+                active=payload.active,
+                createdby=payload.createdby,
+                modifiedby=payload.modifiedby
+            )
 
-            if getattr(payload, "contacts", None):
+            session.add(db_customer)
+            session.flush()  # get db_customer.id
+
+            # Add contacts if provided
+            if payload.contacts:
                 for contact in payload.contacts:
-                    contact_data = PostCust_Contact.from_orm(contact)
-                    contact_data.customerid = db_customer.id
-                    session.add(contact_data)
+                    db_contact = CustomerContacts(
+                        customerid=db_customer.id,
+                        contact_type=contact.contact_type,
+                        contact_person=contact.contact_person,
+                        contact_mobile=contact.contact_mobile,
+                        contact_phone=contact.contact_phone,
+                        contact_email=contact.contact_email,
+                        rowno=contact.rowno,
+                        active=True
+                    )
+                    session.add(db_contact)
 
             session.commit()
             session.refresh(db_customer)
 
-        return db_customer
+        # Convert ORM customer + contacts to Pydantic for response
+        contacts_list = [
+            PostCust_Contact(
+                id=c.id,
+                customerid=c.customerid,
+                contact_type=c.contact_type,
+                contact_person=c.contact_person,
+                contact_mobile=c.contact_mobile,
+                contact_phone=c.contact_phone,
+                contact_email=c.contact_email,
+                rowno=c.rowno,
+                active=c.active
+            )
+            for c in getattr(db_customer, "contacts", [])
+        ]
+
+        return Postcustomer(
+            id=db_customer.id,
+            companyid=db_customer.companyid,
+            companyno=db_customer.companyno,
+            customer_type=db_customer.customer_type,
+            customername=db_customer.customername,
+            contactperson=db_customer.contactperson,
+            currencyid=db_customer.currencyid,
+            customer_phone=db_customer.customer_phone,
+            customer_mobile=db_customer.customer_mobile,
+            customer_email=db_customer.customer_email,
+            customer_website=db_customer.customer_website,
+            address1=db_customer.address1,
+            address2=db_customer.address2,
+            cityid=db_customer.cityid,
+            stateid=db_customer.stateid,
+            countryid=db_customer.countryid,
+            pincode=db_customer.pincode,
+            shipping_address1=db_customer.shipping_address1,
+            shipping_address2=db_customer.shipping_address2,
+            shipping_cityid=db_customer.shipping_cityid,
+            shipping_stateid=db_customer.shipping_stateid,
+            shipping_countryid=db_customer.shipping_countryid,
+            shipping_pincode=db_customer.shipping_pincode,
+            gsttype=db_customer.gsttype,
+            gstin=db_customer.gstin,
+            placeof_supply=db_customer.placeof_supply,
+            sameas=db_customer.sameas,
+            active=db_customer.active,
+            createdby=db_customer.createdby,
+            modifiedby=db_customer.modifiedby,
+            contacts=contacts_list
+        )
+
     except Exception as e:
         session.rollback()
         raise HTTPException(status_code=500, detail=f"Error saving customer: {str(e)}")
@@ -303,7 +402,7 @@ def update_customer(customerid: int , upd:UpdateCustomer, session: Session = Dep
     if not db_customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 
-    for key, value in upd.model_dump().items():
+    for key, value in upd.model_dump(exclude={"contacts"}).items():
         setattr(db_customer, key, value)
     session.add(db_customer)
     session.commit()
@@ -325,6 +424,8 @@ def update_customer(customerid: int , upd:UpdateCustomer, session: Session = Dep
                 session.add(new_contact)
 
         session.commit()
+        session.refresh(db_customer)
+
 
     return upd
 
@@ -421,7 +522,7 @@ def get_contacts(customerid: int, session: Session = Depends(get_session),
     return CustomerContactsResponse(custhdr=cust_header, custdtl=cust_details)
 
 @router.delete("/custdelete/{customerid}", response_model=dict)
-def delete_taxmaster(customerid: int, session: Session = Depends(get_session)):    
+def delete_customer(customerid: int, session: Session = Depends(get_session)):    
     db_tax = session.get(CustomerHeader, customerid)
     if not db_tax:
         raise HTTPException(status_code=404, detail="Customer not found")
