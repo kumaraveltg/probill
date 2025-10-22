@@ -508,7 +508,7 @@ def read_customer(
     )
 
 @router.get("/getcustcontacts/{customerid}",response_model=CustomerContactsResponse)
-def get_contacts(customerid: int, session: Session = Depends(get_session),
+def get_customer_contacts(customerid: int, session: Session = Depends(get_session),
                   current_user: dict = Depends(get_current_user)
                  ):
     cust_header = session.get(CustomerViewHeader, customerid)

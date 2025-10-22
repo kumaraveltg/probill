@@ -1,5 +1,6 @@
 from fastapi import  FastAPI, APIRouter, HTTPException, Depends,Query
 from sqlmodel import Session, select, SQLModel, Field ,delete ,func ,Table,MetaData,and_ 
+from sqlalchemy import  case,cast,Float
 from .db import engine, get_session
 #from sqlalchemy.orm import aliassed
 from pydantic import  validator, BaseModel ,EmailStr 
@@ -106,6 +107,7 @@ class InvoiceView(SQLModel,table=True):
     companyno: str
     companyid: int
     companyname: str 
+    invoiceno: str
     invoicedate: date
     customerid: int
     customername: str
@@ -139,6 +141,8 @@ class InvoiceDetailView(SQLModel, table=True):
     invoiceqty: float
     invoicerate: float
     invoiceamount: float
+    discounttype: Optional[str] = None
+    discount_amt_per: Optional[float] = None
     taxheaderid: Optional[int] = None
     taxname: Optional[str] = None    # ✅ make it optional
     taxrate: Optional[float] = None
@@ -153,6 +157,16 @@ class InvoiceDetailView(SQLModel, table=True):
     invoice_headerid: int
     afterdiscountamount:Optional[float] = None
     
+class InvoiceFooter(SQLModel,table=True):
+    __tablename__ = "vw_invoice_footer"
+    __table_args__ = {"extend_existing": True} 
+    id: int | None = Field(default=None, primary_key=True)
+    invoiceno: str 
+    taxsupply: Optional[str] = None
+    taxslabname: Optional[str] = None
+    footeramt: Optional[float] = None
+
+
 class PostInvoiceDetails(BaseModel):
   id: Optional[int] = None
   invoice_headerid: Optional[int]= None  
@@ -218,7 +232,7 @@ class UpdateInvoiceDetails(BaseModel):
   invoiceqty: float = Field(default=0.000 )
   invoicerate: float= Field(default=0.00 )
   invoiceamount:float = Field(default=0.00 )
-  discounttype:Optional[str]= Field(default=0.00 )
+  discounttype:Optional[str]= None
   discount_amt_per: Optional[float] = Field(default=0.00 )
   taxheaderid: int  
   taxrate:float
@@ -354,7 +368,27 @@ class InvoicePDFHeader(BaseModel):
     remarks: str | None
     invoiceno: str| None
     
+class InvoicePDFDetails(BaseModel):
+    id: int
+    rowno: int
+    productname: str | None = None
+    productcode: str | None = None
+    prductspec: str | None = None
+    uomcode: str | None = None
+    invoiceqty: float
+    invoicerate: float
+    invoiceamount: float
+    taxname: str | None = None
+    taxrate: float | None = None
+    taxamount: float | None = None
+    netamount: float | None = None
+    discountype: str | None = None
+    discount_amt_per: float | None = None
 
+class InvoicePDFFooter(BaseModel):
+    taxsupply: Optional[str] = None
+    taxslabname: str | None
+    footeramt: float | None
 
 def get_financial_year(invoice_date: date) -> str:
     year = invoice_date.year
@@ -627,7 +661,7 @@ def read_invoice(
     invoice_header = session.exec(
         select(c)
         .where( c.companyid == companyid)
-        .order_by(c.invoiceno)
+        .order_by(c.invoiceno.desc())
         .offset(skip)
         .limit(limit)
     ).all()
@@ -666,8 +700,8 @@ def get_invdetails(invoiceid: int, session: Session = Depends(get_session),
 
   
 
-@router.get("/getinvpdfhdr/{invoiceid}", response_model=List[InvoicePDFHeader])
-def get_invpdfhdr(invoiceid: int, session: Session = Depends(get_session)):
+@router.get("/getinvpdfhdr", response_model=List[InvoicePDFHeader])
+def get_pdfhdr(invoiceno: str, session: Session = Depends(get_session)):
 
     # Tables
     comp = Company
@@ -711,7 +745,7 @@ def get_invpdfhdr(invoiceid: int, session: Session = Depends(get_session)):
         .select_from(comp)
         .join(cust, comp.id == cust.companyid)
         .join(inv, cust.id == inv.customerid)
-        .where(inv.id == invoiceid)
+        .where(inv.invoiceno.like(f"%{invoiceno}%"))
     )
 
     results = session.exec(statement).all()
@@ -759,6 +793,51 @@ def get_invpdfhdr(invoiceid: int, session: Session = Depends(get_session)):
     )
 
     return response
+
+@router.get("/getinvdtlpdf", response_model=List[InvoicePDFDetails])
+def get_pdfdtl(invoiceno: str, session: Session = Depends(get_session)):
+    statement = (
+        select(InvoiceDetailView)
+        .join(InvoiceHeader, InvoiceDetailView.invoice_headerid == InvoiceHeader.id)
+        .where(InvoiceHeader.invoiceno == invoiceno)
+        .order_by(InvoiceDetailView.rowno)
+    )
+
+    results = session.exec(statement).all()
+
+    if not results:
+        raise HTTPException(status_code=404, detail="Invoice Details not found")
+
+    return results
+ 
+
+@router.get("/getinvfooterpdf", response_model=List[InvoicePDFFooter])
+def get_pdffooter(invoiceno: str, session: Session = Depends(get_session)):
+   
+    statement = (
+        select(
+            InvoiceFooter.id,
+            InvoiceFooter.invoiceno,
+            InvoiceFooter.taxslabname,
+            func.sum(InvoiceFooter.footeramt).label("footeramt")
+        )
+        .where(
+            InvoiceFooter.invoiceno == invoiceno,
+            InvoiceFooter.footeramt > 0
+        )
+        .group_by(InvoiceFooter.taxslabname,InvoiceFooter.id, InvoiceFooter.invoiceno)
+        .order_by( InvoiceFooter.id.desc() )
+    )
+
+    results = session.exec(statement).all()
+
+    if not results:
+        raise HTTPException(status_code=404, detail="Invoice Footer not found")
+
+    return [
+        {"taxslabname": r.taxslabname, "footeramt": r.footeramt}
+        for r in results
+    ]
 
 
     
