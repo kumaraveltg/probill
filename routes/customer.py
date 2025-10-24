@@ -66,8 +66,7 @@ class CustomerContacts(SQLModel, table=True):
     contact_email: Optional[EmailStr]= None
     
    # customer: Optional[CustomerHeader] = Relationship(back_populates="contacts")
-
-
+ 
 #customer View from DbView customer,Contacts
 
 class CustomerViewHeader(SQLModel,table=True):
@@ -131,7 +130,6 @@ class Config:
         orm_mode = True  # <-- important
 
 
-
 class Postcustomer(BaseModel):
     companyid: int  
     companyno: str 
@@ -166,8 +164,6 @@ class Postcustomer(BaseModel):
 class Config:
         orm_mode = True  # <-- important
 
-
- 
 
 class UpdateContact(BaseModel):
     id: Optional[int] = None       # existing contact id (for updates)
@@ -471,7 +467,6 @@ def customer_search(
      response_data.append(CustomerSearch(**record))  # ✅ Pydantic model instance
 
     return response_data
-
 
 
 @router.get("/getcustomer/{companyid}", response_model=CustomerResponse)

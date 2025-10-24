@@ -36,6 +36,7 @@ class InvoiceHeader(CommonFields, table=True):
     ded_othercharges:float
     roundedoff:float
     totnetamount:float
+    receiptamount: Optional[float] = 0.00
     model_config = {
         "from_attributes": True,
         "json_encoders": {
@@ -121,6 +122,7 @@ class InvoiceView(SQLModel,table=True):
     cancel: str
     referenceno:str
     referencedate: date
+    receiptamount: Optional[float] = 0.00
     model_config = {
         "from_attributes": True,
         "json_encoders": {
