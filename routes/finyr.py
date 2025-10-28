@@ -1,5 +1,5 @@
 from fastapi import APIRouter,  HTTPException,Depends,Query
-from sqlmodel import Session, select,SQLModel,Field,delete, and_,func,cast,String
+from sqlmodel import Session, select,SQLModel,Field,delete, and_,func,cast,String,Text
 from .db import engine, get_session
 from sqlalchemy.dialects.postgresql import ARRAY, INTEGER,JSON 
 from pydantic import EmailStr,validator,BaseModel,model_validator
@@ -15,8 +15,8 @@ class FinYrheader(CommonFields, table=True):
     __tablename__ = "finyr_header"
     __table_args__ = {"extend_existing": True} 
     finyrname: str = Field(index=True,nullable=False)
-    startdate: date = Field(nullable=False)
-    enddate: date = Field(nullable=False)
+    hstartdate: date = Field(nullable=False)
+    henddate: date = Field(nullable=False)
     active: bool = True  # default value
 
 class Finyrdetail(SQLModel, table=True):
@@ -34,8 +34,8 @@ class PFinYr(BaseModel):
     createdby: str = Field(nullable=False)
     modifiedby: str = Field(nullable=False)
     finyrname: str = Field(nullable=False)
-    startdate: date = Field(nullable=False)
-    enddate: Optional[date] = None
+    hstartdate: date = Field(nullable=False)
+    henddate: Optional[date] = None
     active: bool = True 
     model_config = {
         "from_attributes": True,
@@ -45,8 +45,8 @@ class PFinYr(BaseModel):
     }
     @model_validator(mode="after")
     def set_enddate(self):
-        if self.enddate is None:
-            self.enddate = self.startdate.replace(year=self.startdate.year + 1) - timedelta(days=1)
+        if self.henddate is None:
+            self.henddate = self.hstartdate.replace(year=self.hstartdate.year + 1) - timedelta(days=1)
         return self
 
 class Pfinyrdetail(BaseModel):
@@ -78,8 +78,8 @@ class FinYrResponse(BaseModel):
 class Finyrupdate(BaseModel):   
     modifiedby: str = Field(nullable=False)
     finyrname: Optional[str] = None
-    startdate: Optional[date] = None
-    enddate: Optional[date] = None
+    hstartdate: Optional[date] = None
+    henddate: Optional[date] = None
     active: Optional[bool] = None
     model_config = {
         "from_attributes": True,
@@ -89,8 +89,8 @@ class Finyrupdate(BaseModel):
     }  
     @model_validator(mode="after")
     def set_enddate(self):
-        if self.enddate is None:
-            self.enddate = self.startdate.replace(year=self.startdate.year + 1) - timedelta(days=1)
+        if self.henddate is None:
+            self.henddate = self.hstartdate.replace(year=self.hstartdate.year + 1) - timedelta(days=1)
         return self    
 
 class FinyrRead(BaseModel):
@@ -98,8 +98,8 @@ class FinyrRead(BaseModel):
     createdby: str  
     modifiedby: str 
     finyrname: str  
-    startdate: date  
-    enddate: Optional[date] = None
+    hstartdate: date  
+    henddate: Optional[date] = None
     active: bool = True 
     createdon: datetime
     modifiedon: datetime
@@ -114,8 +114,8 @@ class FinyrRead(BaseModel):
 class FinyrSearch(BaseModel):
     id: int
     finyrname: str
-    startdate: date
-    enddate: Optional[date]= None
+    hstartdate: date
+    henddate: Optional[date]= None
     active: bool=True
 
 class FinyrgetResponse(BaseModel):
@@ -172,7 +172,7 @@ def create_finyr(finyr: PFinYr, session: Session = Depends(get_session)):
     # Check for overlapping financial years
     overlapping_finyr = session.exec(
         select(FinYrheader).where(
-            (FinYrheader.startdate <= finyr.enddate) & (FinYrheader.enddate >= finyr.startdate)
+            (FinYrheader.hstartdate <= finyr.henddate) & (FinYrheader.henddate >= finyr.hstartdate)
         )
     ).first()
     if overlapping_finyr:
@@ -184,7 +184,7 @@ def create_finyr(finyr: PFinYr, session: Session = Depends(get_session)):
     session.refresh(new_finyr)
 
     # Generate and add periods
-    periods = generate_periods(finyr.startdate, finyr.enddate)
+    periods = generate_periods(finyr.hstartdate, finyr.henddate)
     for period in periods:
         period.finyrid = new_finyr.id
         new_period = Finyrdetail.from_orm(period)
@@ -202,10 +202,10 @@ def update_finyr(finyr_id: int, finyr_update: Finyrupdate, session: Session = De
     # Update fields if provided
     if finyr_update.finyrname is not None:
         finyr.finyrname = finyr_update.finyrname
-    if finyr_update.startdate is not None:
-        finyr.startdate = finyr_update.startdate
-    if finyr_update.enddate is not None:
-        finyr.enddate = finyr_update.enddate
+    if finyr_update.hstartdate is not None:
+        finyr.hstartdate = finyr_update.hstartdate
+    if finyr_update.henddate is not None:
+        finyr.henddate = finyr_update.henddate
     if finyr_update.active is not None:
         finyr.active = finyr_update.active
     if finyr_update.modifiedby is not None:
@@ -213,7 +213,7 @@ def update_finyr(finyr_id: int, finyr_update: Finyrupdate, session: Session = De
 
     # Check if periods need to be updated
     update_periods = False
-    if finyr_update.startdate is not None or finyr_update.enddate is not None:
+    if finyr_update.hstartdate is not None or finyr_update.henddate is not None:
         update_periods = True
 
     session.add(finyr)
@@ -226,8 +226,8 @@ def update_finyr(finyr_id: int, finyr_update: Finyrupdate, session: Session = De
         session.commit()
 
         # Generate and add new periods
-        new_start = finyr_update.startdate if finyr_update.startdate is not None else finyr.startdate
-        new_end = finyr_update.enddate if finyr_update.enddate is not None else finyr.enddate
+        new_start = finyr_update.hstartdate if finyr_update.hstartdate is not None else finyr.hstartdate
+        new_end = finyr_update.henddate if finyr_update.henddate is not None else finyr.henddate
         periods = generate_periods(new_start, new_end)
         for period in periods:
             period.finyrid = finyr.id
@@ -245,16 +245,23 @@ def finyr_search(
  query = db.query(
      FinYrheader.id,   
      FinYrheader.finyrname,
-     FinYrheader.startdate,
-     FinYrheader.enddate,
+     FinYrheader.hstartdate,
+     FinYrheader.henddate,
      FinYrheader.active,
     ) 
 
  if field == "finyrname":
     query = query.filter(FinYrheader.finyrname.ilike(f"%{value}%"))
- elif field == "startdate":
-    # cast date to string for partial search
-    query = query.filter(cast(FinYrheader.startdate, String).ilike(f"%{value}%"))
+ elif field == "hstartdate":
+    try:
+        if "/" in value:
+            date_value = datetime.strptime(value, "%d/%m/%Y").date()
+        else:
+            date_value = datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use dd/mm/yyyy or yyyy-mm-dd.")
+    
+    query = query.filter(FinYrheader.hstartdate == date_value)
  else:
     raise HTTPException(status_code=400, detail="Invalid Search")
 
@@ -264,8 +271,8 @@ def finyr_search(
         {
             "id":r.id,
             "finyrname":r.finyrname,
-            "startdate":r.startdate,
-            "enddate":r.enddate,
+            "hstartdate": r.hstartdate.isoformat() if r.hstartdate else None,
+            "henddate": r.henddate.isoformat() if r.henddate else None,
             "active": r.active,  
             
         } for r in result
@@ -282,7 +289,7 @@ def list_finyrs(
 ):
     finyrs = session.exec(
         select(FinYrheader)
-        .order_by(FinYrheader.startdate.desc())
+        .order_by(FinYrheader.hstartdate.desc())
         .offset(skip)
         .limit(limit)
     ).all()
@@ -299,8 +306,8 @@ def list_finyrs(
             createdby=f.createdby,
             modifiedby=f.modifiedby,
             finyrname=f.finyrname,
-            startdate=f.startdate,
-            enddate=f.enddate,
+            hstartdate=f.hstartdate,
+            henddate=f.henddate,
             active=f.active,
             createdon=f.createdon,
             modifiedon=f.modifiedon,

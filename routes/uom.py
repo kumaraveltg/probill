@@ -18,6 +18,7 @@ class UOM(CommonFields, table=True):
     uomname: str = Field(index=True,nullable=False)
     uomcode: str = Field(index=True,nullable=False)
     active: bool = True  # default value
+    companyno:str
 
 #schema/ pydantic
 class PUOM(BaseModel):
@@ -27,6 +28,7 @@ class PUOM(BaseModel):
     uomname: str = Field(nullable=False)
     uomcode: str = Field(nullable=False)
     active: bool = True 
+    companyno: Optional[str]= None 
     model_config = {
         "from_attributes": True,
         "json_encoders": {
@@ -44,6 +46,7 @@ class UOMUpdate(BaseModel):
     uomcode: Optional[str] = None
     modifiedby: Optional[str]= None
     active: Optional[bool] = None   
+    companyno: Optional[str]= None
     @validator( "modifiedby" )
     def must_not_be_empty(cls, v):
       if not v or not v.strip():
@@ -61,6 +64,7 @@ class UOMRead(BaseModel):
     uomname: str
     uomcode: str
     active: bool
+    companyno: Optional[str]= None
 
     model_config = {
         "from_attributes": True,
@@ -83,6 +87,7 @@ class UomSearch(BaseModel):
     active: bool
     companyid: int
     companyname: Optional[str] = None
+    companyno: Optional[str] = None
 
 class UomResponse(BaseModel):
     total: int
@@ -100,7 +105,7 @@ def create_uom(uom: PUOM, session: Session = Depends(get_session)):
     if not uom.uomcode or not uom.uomcode.strip():
         raise HTTPException(status_code=400, detail="UOM code is required")
     existing_uom = session.exec(
-        select(UOM,Company.companyname).join(Company, UOM.companyid == Company.id).where(UOM.uomcode == uom.uomcode)   
+        select(UOM,Company.companyname,Company.companyno).join(Company, UOM.companyid == Company.id).where(UOM.uomcode == uom.uomcode)   
     ).first()
     if existing_uom:
         raise HTTPException(status_code=400, detail="UOM code already exists")
@@ -139,7 +144,8 @@ def search_uom(
         UOM.uomcode,
         UOM.active,
         UOM.companyid,
-        Company.companyname
+        Company.companyname,
+        Company.companyno
     ).join(Company, UOM.companyid == Company.id ,isouter=True ).filter(Company.id== companyid) 
 
     if field == "uomname":
@@ -159,6 +165,7 @@ def search_uom(
             "active": r.active,
             "companyid": r.companyid,
             "companyname": r.companyname,
+            "companyno": r.companyno,
         }   
         for r in results
     ]
@@ -168,7 +175,7 @@ def search_uom(
 def uom_list( company_id: int,skip: int = 0, limit: int = 10,  session: Session=Depends(get_session)
              ,current_user:dict=Depends(get_current_user)):
     uom_list = session.exec(
-        select(UOM, Company.companyname,Company.id).join(Company, UOM.companyid == Company.id ,isouter=True )
+        select(UOM, Company.companyname,Company.id,Company.companyno).join(Company, UOM.companyid == Company.id ,isouter=True )
         .where( and_( UOM.active==True 
         , UOM.companyid == company_id )).order_by(UOM.uomname).offset(skip).limit(limit )).all()
     totalcount = session.exec(
@@ -176,10 +183,11 @@ def uom_list( company_id: int,skip: int = 0, limit: int = 10,  session: Session=
         , UOM.companyid == company_id ))  ).one()
     
     result = []
-    for uom, companyname,companyid in uom_list:
+    for uom, companyname,companyid,companyno in uom_list:
         uom_data = UOMRead.from_orm(uom)
         uom_data.companyname = companyname
         uom_data.companyid = companyid
+        uom_data.companyno = companyno
         result.append(uom_data)
     
     return { "total": totalcount, "uoms": result }

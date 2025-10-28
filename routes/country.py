@@ -63,6 +63,10 @@ class CountrySearch(BaseModel):
 
     class Config:
         orm_mode = True
+class CountryResponse(BaseModel):
+ country_list: List[CountryRead]
+ total: int = Field(default=0)
+
 
 @router.post("/country/", response_model=CountryRead)
 def create_country(country: PCountry, session: Session= Depends(get_session)):
@@ -97,11 +101,13 @@ def update_country(id :int, country: CountryUpdate, session: Session= Depends(ge
     session.refresh(db_country)
     return db_country
 
-@router.get("/country/", response_model=List[CountryRead])
+@router.get("/country/", response_model=CountryResponse)
 def read_countries(skip: int = 0, limit: int = 10, session: Session = Depends(get_session),
                    current_user: dict = Depends(get_current_user)):
     countries = session.exec(select(Country).offset(skip).limit(limit)).all()
-    return countries
+    totalcount = session.exec(select(func.count()).select_from(Country)).one()   
+    return CountryResponse(country_list=countries, total=totalcount)
+     
 
 @router.get("/country/search", response_model=List[CountrySearch])
 def search_country(field: str = Query(...), value: str = Query(...), db: Session = Depends(get_session)):

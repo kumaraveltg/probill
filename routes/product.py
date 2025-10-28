@@ -120,6 +120,7 @@ class ProductSearch(BaseModel):
     selling_price: int
     cost_price: int
     hsncode: Optional[str] = None
+    taxmasterid:Optional[int] = None
     taxname: int     # changed from int → str
     taxrate: Optional[float] = 0.0
     active: bool = True
@@ -187,7 +188,7 @@ def product_search(
             t.id.label("taxmasterid"),
             su.uomcode.label("selling_uom_code"),
             pu.uomcode.label("purchase_uom_code"),
-            t.taxname.label("taxname"),
+            t.taxname.label("taxname"), 
         )
         .join(c, p.companyid == c.id)
         .join(su, and_(p.selling_uom == su.id ,func.coalesce(su.active, True)))
@@ -237,6 +238,7 @@ def product_search(
         "selling_uom": r.sellingid,
         "purchase_uom": r.purchaseid,
         "taxname": r.taxmasterid,  
+        "taxmasterid":r.taxmasterid,
         }
         for r in results  
          

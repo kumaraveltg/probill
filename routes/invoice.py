@@ -585,6 +585,7 @@ def invoice_search(
             d.gsgstamount,
             d.gcgstamount,
             d.gigstamount,
+            d.netamount,
             d.afterdiscountamount 
         )
         .join(comp, c.companyid == comp.id, isouter=True)
@@ -612,7 +613,7 @@ def invoice_search(
         # Unpack query result tuple
         r, companyname, customername, invoiceno, invoicedate, productname, productcode, \
         itemid, uomid, uomcode, invoiceqty, invoicerate, invoiceamount, taxid, taxname, \
-        taxrate, taxamount, sgstper, cgstper, igstper, sgstamount, cgstamount, igstamount = row
+        taxrate, taxamount, sgstper, cgstper, igstper, sgstamount, cgstamount, igstamount,netamount,afterdiscountamount  = row
 
         record = r.model_dump() if hasattr(r, "model_dump") else r.__dict__.copy()
         
@@ -640,8 +641,9 @@ def invoice_search(
             "sgstamount": sgstamount or 0,
             "cgstamount": cgstamount or 0,
             "igstamount": igstamount or 0,
-            "afterdiscountamount":afterdiscountamount or 0
-        })
+            "netamount": netamount or 0,
+            "afterdiscountamount": afterdiscountamount or 0,
+                    })
 
         response_data.append(InvoiceSearch(**record))
 

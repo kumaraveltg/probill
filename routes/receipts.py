@@ -244,7 +244,7 @@ class ReceiptsSearch(BaseModel):
     cheqedate: Optional[date] = None 
     remarks: Optional[str] = None
     totalreceiptamount: float
-    invoiceno: Optional[int] = None
+    invoiceno: Optional[str] = None
     invoicedate: date
     invoiceamount: float 
     gcurrency: int
@@ -274,10 +274,11 @@ def get_financial_year(invoice_date: date) -> str:
 
 def update_invoice_receipt_amount(session: Session, invoice_id: int, commit=True):
     total_receipt = session.scalar(
-        select(func.coalesce(func.sum(ReceiptsDetail.greceiptamount), 0))
-        .where(
-            (ReceiptsDetail.invoiceno == invoice_id)
-            & (ReceiptsHeader.cancel != 'T')
+    select(func.coalesce(func.sum(ReceiptsDetail.greceiptamount), 0))
+    .join(ReceiptsHeader, ReceiptsHeader.id == ReceiptsDetail.receiptheaderid)
+    .where(
+        (ReceiptsDetail.invoiceno == invoice_id)
+        & (ReceiptsHeader.cancel != 'T')
         )
     )
 
@@ -340,8 +341,14 @@ def add_receipts(payload: ReceiptsHeaderCreate, session: Session = Depends(get_s
         session.commit()
         session.refresh(db_receipt)
 
-        for detail in payload.receipt_details:
-            update_invoice_receipt_amount(session, detail.invoiceno)
+        # --- Update invoice receipt amounts ---
+
+        unique_invoices = {d.invoiceno for d in payload.receipt_details or []}
+
+        for invoiceno in unique_invoices:
+            update_invoice_receipt_amount(session, invoiceno, commit=False)
+
+            session.commit()
 
         return db_receipt
 
@@ -409,13 +416,17 @@ def update_receipts(
     session.refresh(db_receipt)
 
     # --- Update invoice receipt amounts ---
-    for detail_payload in payload.receipt_details or []:
-        update_invoice_receipt_amount(session, detail_payload.invoiceno)
+    unique_invoices = {d.invoiceno for d in payload.receipt_details or []}
+
+    for invoiceno in unique_invoices:
+        update_invoice_receipt_amount(session, invoiceno, commit=False)
+
+        session.commit()
 
     return db_receipt
 
 
-@router.get("/receiptssearch/", response_model=List[ReceiptsSearch])
+@router.get("/receiptssearch/{companyid}", response_model=List[ReceiptsSearch])
 def search_receipts(
     companyid: int,
     field: str = Query(...),
@@ -451,43 +462,38 @@ def search_receipts(
     results = db.execute(query).all()  # ✅ should use execute() not exec()
     response = []
 
-    for rechdr, recdtl, invhdr in results:  # ✅ 3 values, since you selected 3 tables
+    for rechdr, recdtl, invhdr in results:
         company = db.get(Company, rechdr.companyid)
         customer = db.get(CustomerHeader, rechdr.customerid)
         currency = db.get(Currency, rechdr.currencyid)
 
-        receipt_search = ReceiptsSearch(
-            companyid=rechdr.companyid,
-            companyno=rechdr.companyno,
-            receiptno=rechdr.receiptno,
-            receiptdate=rechdr.receiptdate,
-            receipttype=rechdr.receipttype,
-            customerid=rechdr.customerid,
-            receiptamount=rechdr.receiptamount,
-            paymentmode=rechdr.paymentmode,
-            currencyid=rechdr.currencyid,
-            exrate=rechdr.exrate,
-            transactionno=rechdr.transactionno,
-            transactiondate=rechdr.transactiondate,
-            chequeno=rechdr.chequeno,
-            cheqedate=rechdr.cheqedate,
-            remarks=rechdr.remarks,
-            totalreceiptamount=rechdr.totalreceiptamount,
-            invoiceno=recdtl.invoiceno,
-            invoicedate=invhdr.invoicedate,
-            invoiceamount=invhdr.invoiceamount,
-            gcurrency=recdtl.gcurrency,
-            gexrate=recdtl.gexrate,
-            greceiptamount=recdtl.greceiptamount,
-            commisionamount=recdtl.commisionamount,
-            tdsamount=recdtl.tdsamount,
-            netreceiptamount=recdtl.netreceiptamount,
-            companyname=company.companyname if company else None,
-            customername=customer.customername if customer else None,
-        )
-        response.append(receipt_search)
+        # Convert header and detail to dict safely
+        hdr_dict = rechdr.model_dump() if hasattr(rechdr, "model_dump") else rechdr.__dict__.copy()
+        dtl_dict = recdtl.model_dump() if recdtl and hasattr(recdtl, "model_dump") else (recdtl.__dict__.copy() if recdtl else {})
+        inv_dict = invhdr.model_dump() if invhdr and hasattr(invhdr, "model_dump") else (invhdr.__dict__.copy() if invhdr else {})
 
-    # ✅ Always return a list (even if empty)
+    # Merge all fields
+        record = {
+            **hdr_dict,
+            **{
+                "invoiceno": inv_dict.get("invoiceno"),
+                "invoicedate": inv_dict.get("invoicedate"),
+                "invoiceamount": inv_dict.get("totnetamount"),
+            },
+            **{
+                "gcurrency": dtl_dict.get("gcurrency"),
+                "gexrate": dtl_dict.get("gexrate"),
+                "greceiptamount": dtl_dict.get("greceiptamount"),
+                "commisionamount": dtl_dict.get("commisionamount"),
+                "tdsamount": dtl_dict.get("tdsamount"),
+                "netreceiptamount": dtl_dict.get("netreceiptamount"),
+            },
+            "companyname": company.companyname if company else None,
+            "customername": customer.customername if customer else None,
+        }
+
+        response.append(ReceiptsSearch(**record))
+
     return response
 
 
