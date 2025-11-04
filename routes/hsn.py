@@ -50,6 +50,8 @@ class HsnRead(BaseModel):
     taxname: str    
     taxrate: float
     effective_date: date
+    from_date:date
+    to_date:date
     active: bool
     createdby: str
     modifiedby: str
@@ -102,7 +104,8 @@ def create_hsn(HSNP: HsnPost, session: Session = Depends(get_session),
     # Check duplicate
     db_HSN = session.exec(select(HSN).where(
         HSN.hsncode == HSNP.hsncode,
-        HSN.companyid == HSNP.companyid
+        HSN.companyid == HSNP.companyid , 
+        HSN.effective_date== HSNP.effective_date
     )).first()
     if db_HSN:
         raise HTTPException(status_code=400, detail="HSN code already exists for this company")
@@ -187,7 +190,7 @@ def read_hsn(
     skip: int = 0,
     limit: int = 10,
     session: Session = Depends(get_session),
-    current_user: dict = Depends(get_current_user)
+   # current_user: dict = Depends(get_current_user)
 ):
     t = TaxHeader
     c = Company
@@ -228,8 +231,7 @@ def read_hsn(
         print("------------------------------------------------")
         print(f"Index: {i}")
         print(f"HSN Code: {HSN.hsncode}")
-        print(f"Current Effective Date (From): {current_effective}")
-        print(f"Next Effective Date: {next_effective}")
+        print(f"Current Effective Date (From): {current_effective}") 
         print(f"Calculated To Date: {to_date}")
         print("------------------------------------------------")
 

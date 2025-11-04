@@ -79,7 +79,9 @@ class StateListResponse(BaseModel):
     total: int = Field(default=0)
 
 @router.post("/state/", response_model=PState)
-def create_state(state: PState, session: Session= Depends(get_session)):
+def create_state(state: PState, session: Session= Depends(get_session),
+                 curr:dict=Depends(get_current_user),
+                 ):
     db_state = session.exec(select(State).where(State.statecode == state.statecode)).first()
     if db_state:
         raise HTTPException(status_code=400, detail="State code already exists")
@@ -96,7 +98,9 @@ def create_state(state: PState, session: Session= Depends(get_session)):
     session.refresh(db_state)
     return db_state
 @router.post("/stateupdate/{stateid}", response_model=StateUpdate)
-def update_state(stateid:int,state: StateUpdate, session: Session= Depends(get_session)):
+def update_state(stateid:int,state: StateUpdate, session: Session= Depends(get_session),
+                 curr:dict=Depends(get_current_user),
+                 ):
     db_state = session.exec(select(State).where(State.id == stateid)).first()
     if not db_state:
         raise HTTPException(status_code=400, detail="State Not found")
