@@ -5,7 +5,7 @@ from pydantic import  validator, BaseModel
 from sqlalchemy.orm import aliased
 from typing import List,Optional
 from routes.commonflds import CommonFields  
-from datetime import datetime,date
+from datetime import datetime,date,timedelta
 from routes.userauth import get_current_user
 from routes.taxmaster import TaxHeader
 from routes.company import Company
@@ -182,54 +182,81 @@ def search_state(
     ]
 
 @router.get("/hsn/{companyid}", response_model=HsnResponse)
-def read_hsn(companyid: int, skip: int = 0, limit: int = 10, session: Session = Depends(get_session),
-                 current_user :dict = Depends(get_current_user)
-                ):
-    # Aliases (optional)
+def read_hsn(
+    companyid: int,
+    skip: int = 0,
+    limit: int = 10,
+    session: Session = Depends(get_session),
+    current_user: dict = Depends(get_current_user)
+):
     t = TaxHeader
     c = Company
 
-# Query HSN with joins
-    hsnreadvalue = session.exec(
-    select(
-        HSN,
-        t.id.label("taxheaderid"),
-        t.taxname,
-        t.taxrate,
-        c.companyno,
-        c.companyname
-     )
-    .join(c, HSN.companyid == c.id)                # join company
-    .outerjoin(t, HSN.taxname == t.id)            # left join taxheader
-    .where(c.id == companyid)
-    .order_by(HSN.hsncode)
-    .offset(skip)
-    .limit(limit)
+    # Query HSNs ordered by effective_date (to find next record easily)
+    hsn_records = session.exec(
+        select(
+            HSN,
+            t.id.label("taxheaderid"),
+            t.taxname,
+            t.taxrate,
+            c.companyno,
+            c.companyname
+        )
+        .join(c, HSN.companyid == c.id)
+        .outerjoin(t, HSN.taxname == t.id)
+        .where(c.id == companyid)
+        .order_by(HSN.hsncode, HSN.effective_date)
+        .offset(skip)
+        .limit(limit)
     ).all()
 
-# Total count of HSN for the company
-    totalcount = session.exec(select(func.count()).select_from(HSN).where(HSN.companyid == companyid)).one()
-    hsnlist = [      
+    totalcount = session.exec(
+        select(func.count()).select_from(HSN).where(HSN.companyid == companyid)
+    ).one()
+
+    hsnlist = []
+    today = date.today()
+
+    for i, t in enumerate(hsn_records):
+        current_effective = t[0].effective_date
+        # Next record’s effective_date if available
+        if i + 1 < len(hsn_records) and hsn_records[i + 1][0].hsncode == t[0].hsncode:
+            next_effective = hsn_records[i + 1][0].effective_date
+            to_date = next_effective - timedelta(days=1)
+        else:
+            to_date = today  # Last record — up to sysdate
+        print("------------------------------------------------")
+        print(f"Index: {i}")
+        print(f"HSN Code: {HSN.hsncode}")
+        print(f"Current Effective Date (From): {current_effective}")
+        print(f"Next Effective Date: {next_effective}")
+        print(f"Calculated To Date: {to_date}")
+        print("------------------------------------------------")
+
+        hsnlist.append(
             HsnRead(
-               id = t[0].id,
-                hsncode= t[0].hsncode,
-                hsndescription= t[0].hsndescription,
-                taxheaderid= t[1] ,
-                taxname= t[2] ,
-                taxrate= t[3] ,
-                effective_date= t[0].effective_date,
-                active= t[0].active,
-                createdby= t[0].createdby,
-                modifiedby= t[0].modifiedby,
-                createdon= t[0].createdon,
-                modifiedon= t[0].modifiedon,
+                id=t[0].id,
+                hsncode=t[0].hsncode,
+                hsndescription=t[0].hsndescription,
+                taxheaderid=t[1],
+                taxname=t[2],
+                taxrate=t[3],
+                effective_date=t[0].effective_date,
+                from_date=current_effective,
+                to_date=to_date,
+                active=t[0].active,
+                createdby=t[0].createdby,
+                modifiedby=t[0].modifiedby,
+                createdon=t[0].createdon,
+                modifiedon=t[0].modifiedon,
                 companyid=t[0].companyid,
                 companyno=t[4],
                 companyname=t[5],
-            ) for t in  hsnreadvalue
-        
-    ]
-    return { "hsnlist":hsnlist , "total":totalcount}
+            )
+        )
+
+    return {"hsnlist": hsnlist, "total": totalcount}
+
 
 @router.delete("/hsn/hsndelete/{hsnid}")
 def delete_hsn(hsnid: int, session: Session = Depends(get_session)):     
