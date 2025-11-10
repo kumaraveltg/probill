@@ -258,7 +258,7 @@ class UpdateInvoiceHeader(BaseModel):
     invoicedate:date
     customerid:int  
     referenceno: Optional[str] = None
-    referencedate:date
+    referencedate:Optional[date] = None
     currencyid: int      
     exrate: float = Field(default=1.00)
     supplytype:str

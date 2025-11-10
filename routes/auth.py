@@ -2,11 +2,12 @@ from fastapi import APIRouter, HTTPException, Depends,status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
-from sqlmodel import Session, select,Field
+from sqlmodel import Session, select,Field,and_
 from passlib.context import CryptContext
 from pydantic import BaseModel
 from .db import get_session  
 from routes.company import Company
+from routes.users import Users
 
 router = APIRouter(tags=["Login"])
 
@@ -26,6 +27,8 @@ class GlobalParams(BaseModel):
     companyid: int | None = None
     companycode: str | None = None
     companyname: str | None = None
+    usertype: str | None = None
+    firstname:str | None = None
 global_params = GlobalParams()
 
 class GlobalParamsRequest(BaseModel):
@@ -83,12 +86,20 @@ def refresh_token(request: RefreshRequest):
     return {"access_token": new_access, "token_type": "bearer"}
  
 def set_global_params(username: str, companyno: str, db: Session):
-    # Fetch company details
-    stmt = select(Company).where(Company.companyno == companyno)
-    company = db.exec(stmt).first()
+    # Fetch company,user details
+    stmt = (
+    select(Company, Users.usertype, Users.firstname)
+    .join(Users, Users.companyid == Company.id, isouter=True)
+    .where(and_(Company.companyno == companyno,Users.username== username))
+    )
+    result = db.exec(stmt).first()
     
-    if not company:
+    if not result:
         raise ValueError("Invalid company number")
+    
+    company = result.Company
+    usertype = result.usertype
+    firstname = result.firstname
 
     # Store globally
     global_params.username = username
@@ -96,6 +107,8 @@ def set_global_params(username: str, companyno: str, db: Session):
     global_params.companyid = company.id
     global_params.companycode = company.companycode
     global_params.companyname = company.companyname
+    global_params.usertype =  usertype
+    global_params.firstname = firstname
 
     
     return global_params

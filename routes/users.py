@@ -1,5 +1,5 @@
 from fastapi import APIRouter,  HTTPException,Depends,Query
-from sqlmodel import Session, select,SQLModel,Field,Column,create_engine,and_,func
+from sqlmodel import Session, select,SQLModel,Field,Column,create_engine,and_,func,any_,cast
 from .db import engine, get_session
 from sqlalchemy.dialects.postgresql import ARRAY, INTEGER
 from pydantic import EmailStr,validator
@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from routes.utils import hash_password
 from routes.company import Company 
 from routes.userauth import get_current_user
+from routes.user_role import UserRole
 
 
 
@@ -23,15 +24,14 @@ class Users(SQLModel, table=True):
     cancel: str ="F"
     createdby: str = Field(nullable=False)
     createdon: datetime = Field(default_factory=datetime.now) 
-    #createdon: str = Field(default_factory=lambda: datetime.now().strftime("%d/%m/%y %H:%M:%S")) I use get api problem
     modifiedby: str= Field(nullable=False)
     modifiedon:  datetime = Field(default_factory=datetime.now,sa_column_kwargs={"onupdate":datetime.now}) 
-    #modifiedon: str = Field(default_factory=lambda: datetime.now().strftime("%d/%m/%y %H:%M:%S"))
     username: str = Field(index=True,nullable=False)
     password: str = Field(default="123456")
     hpassword : Optional[str] = None 
     firstname: Optional[str]=None
     emailid: Optional[EmailStr]= None
+    usertype: Optional[str]= None
     userroleids: Optional[List[int]] = Field(
         sa_column=Column(ARRAY(INTEGER))
     )
@@ -61,6 +61,7 @@ class Puser(BaseModel):
     firstname: Optional[str] = None
     emailid: Optional[EmailStr] = None
     userroleids: Optional[List[int]] = None
+    usertype: Optional[str]= None
     active: bool = True 
     model_config = {
         "from_attributes": True,
@@ -89,6 +90,7 @@ class Upduser(BaseModel):
     firstname: Optional[str] = None
     emailid: Optional[EmailStr] = None
     userroleids: Optional[List[int]] = None
+    usertype: Optional[str]= None
     active: bool = True 
     model_config = {
         "from_attributes": True,
@@ -112,10 +114,12 @@ class Upduser(BaseModel):
 class UserWithCompany(BaseModel):
     id: int
     username: str
-    password: str
+    password: Optional[str] = None
     firstname: str
     emailid: str
     userroleids: List[int]
+    rolename:Optional[str]= None
+    usertype: Optional[str]= None
     active: bool
     companyid: Optional[int] = None 
     companyno: str
@@ -134,10 +138,12 @@ class UserWithCompany(BaseModel):
 class UsersSearch(BaseModel):
    id : int
    username: str
-   password: str
+   password: Optional[str] = None
    firstname: str
    emailid: str
    userroleids: List[int]
+   rolename: Optional[str] = None
+   usertype: Optional[str]= None
    active: bool
    companyid: Optional[int] = None 
    companyno: str
@@ -161,8 +167,11 @@ def create_user(user: Puser , current_user: dict = Depends(get_current_user)):
         user_data = Users(**user_dict)
 
         existing_user = session.exec(
-            select(Users).where(Users.username == user.username)
-        ).first()
+        select(Users).where(
+            (Users.username == user.username) &
+            (Users.companyno == user.companyno) &
+            (Users.usertype == user.usertype)
+            )  ).first()
 
         if existing_user:
             raise HTTPException(status_code=400, detail="Username already exists")
@@ -184,7 +193,6 @@ def update_user(id: int,update_user:Upduser,session: Session=Depends(get_session
     session.commit()
     session.refresh(db_users)
     return {"message":f"User - {db_users.username} has been updated"}
-
 
 @router.get("/userlist",response_model=List[UserWithCompany])
 def users_list(session: Session=Depends(get_session)):
@@ -226,31 +234,51 @@ def users_list(session: Session=Depends(get_session)):
     ]
     return get_users_list
 
+
 @router.get("/search/{companyid}", response_model=List[UsersSearch])
 def search_user( 
      companyid: int,
      field: str = Query(...),
      value: str = Query(...),     
-    db: Session = Depends(get_session)
-):
-    Query = db.query(
+     db: Session = Depends(get_session)
+    ):
+    query = (
+    db.query(
         Users.id,
-    Users.username,
-    Users.firstname,
-    Users.emailid,
-    Users.userroleids,
-    Users.active,
-    Users.companyid,
-    Company.companyname,
-    Company.companyno
-    ).join(Company, Users.companyid == Company.id ,isouter=True ).filter(Company.id== companyid) 
+        Users.username,
+        Users.firstname,
+        Users.emailid,
+        Users.userroleids,
+        func.array_agg(UserRole.rolename).label("rolenames"),
+        Users.usertype,
+        Users.active,
+        Users.companyid,
+        Company.companyname,
+        Company.companyno,
+    )
+    .join(Company, Users.companyid == Company.id, isouter=True)
+    .join(UserRole, UserRole.id == any_(cast(Users.userroleids, ARRAY(INTEGER))), isouter=True)
+    .where(and_(Users.active == True, Users.companyid == companyid))
+    .group_by(
+        Users.id,
+        Users.username,
+        Users.firstname,
+        Users.emailid,
+        Users.userroleids,
+        UserRole.rolename,
+        Users.usertype,
+        Users.active,
+        Users.companyid,
+        Company.companyname,
+        Company.companyno,
+    )
+    .order_by(Users.username)
+    )
 
     if field == "username":
-        Query = Query.filter(Users.username.ilike(f"%{value}%"))
+        Query = query.filter(Users.username.ilike(f"%{value}%"))
     elif field == "firstname":
-        Query = Query.filter(Users.firstname.ilike(f"%{value}%"))
-    elif field == "companyname":
-        Query = Query.filter(Company.companyname.ilike(f"%{value}%"))
+        Query = query.filter(Users.firstname.ilike(f"%{value}%")) 
     else:
         raise HTTPException(status_code=400, detail="Invalid search field")
     
@@ -261,6 +289,7 @@ def search_user(
             "firstname":r.firstname,
             "emailid" : r.emailid, 
             "userroleids":r.userroleids,
+            "usertype":r.usertype,
             "active" : r.active,
             "companyid":r.companyid,
             "companyname": r.companyname,
@@ -278,8 +307,9 @@ def users_company(
     current_user: Dict = Depends(get_current_user)
 ):
     query = (
-        select(Users, Company.companyname, Company.id, Company.companyno)
+        select(Users, Company.companyname, Company.id, Company.companyno,UserRole.rolename)
         .join(Company, Users.companyid == Company.id, isouter=True)
+        .join(UserRole, UserRole.id == any_(cast(Users.userroleids, ARRAY(INTEGER))), isouter=True)
         .where(and_(Users.active == True, Users.companyid == companyid))
         .order_by(Users.username)
         .offset(skip)
@@ -300,11 +330,13 @@ def users_company(
         companyname = row[1]
         companyid = row[2]
         companyno = row[3]
+        rolename = row[4]
 
         user_data = UserWithCompany.from_orm(users)
         user_data.companyname = companyname
         user_data.companyid = companyid
         user_data.companyno = companyno
+        user_data.rolename = rolename
         result.append(user_data.dict())
 
     return { "list_users": result,"total": totalcount}

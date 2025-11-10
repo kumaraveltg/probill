@@ -1,12 +1,14 @@
 from fastapi import APIRouter,  HTTPException,Depends,Query 
 from sqlmodel import Session, select,SQLModel,Field,func,and_
+from sqlalchemy.exc import IntegrityError
 from .db import engine, get_session
 from sqlalchemy.dialects.postgresql import ARRAY, INTEGER,JSON
 from pydantic import EmailStr,validator,BaseModel
 from typing import List, Optional 
 from datetime import datetime   
 from .userauth import get_current_user
-from routes.commonflds import CommonFields 
+from routes.commonflds import CommonFields
+import random
  
 
 #router = APIRouter()
@@ -33,15 +35,17 @@ class Company(SQLModel, table=True):
     currency:int = Field(default=0, nullable=False)
     active: bool = True  # default value
     companyno: str
+    licensetype:Optional[str]=None
     
     
 #schema/ pydantic
 class Pcompany(BaseModel):
     createdby: Optional[datetime]= None
     modifiedby: Optional[datetime]= None
-    companyno:str 
+    companyno:Optional[str]= None
     companyname: str = Field(nullable=False)
     companycode: str = Field(nullable=False)
+    companyno: Optional[str]=None
     adress: Optional[str]=None
     phone: Optional[str]=None
     emailid: Optional[EmailStr]= None
@@ -61,6 +65,7 @@ class Pcompany(BaseModel):
 class CompanyUpdate(BaseModel):
     companyname: Optional[str] = None
     companycode: Optional[str] = None
+    companyno: Optional[str]=None
     adress: Optional[str]=None
     phone: Optional[str]=None
     emailid: Optional[EmailStr]= None
@@ -98,7 +103,9 @@ class CompanyRead(BaseModel):
     currency:Optional[int]
     currencycode: Optional[str] = None
     active: bool     
-    companyno: str
+    companyno: Optional[str] = None
+    licensetype:Optional[str]=None
+    
     model_config = {
         "from_attributes": True,        
         "json_encoders": {
@@ -124,12 +131,25 @@ class CompanyResponse(BaseModel):
     company_list: list[CompanyRead]
     total: int = Field(default =0)
 
+def generate_unique_company_no(session):
+    while True:
+        # Generate 6-digit random number  
+        company_no = str(random.randint(100000, 999999))
+        
+        # Check if this company number already exists
+        existing = session.exec(
+            select(Company).where(Company.companyno == company_no)
+        ).first()
+        
+        if not existing:
+            return company_no
+        
 # ✅ Create company
 @router.post("/createcompany",response_model=Pcompany) 
 def create_company(company: Pcompany, session: Session = Depends(get_session)):
+    
+   companyno = str(generate_unique_company_no(session ))
    
-   # Check if company with the same name already exists
-   # model = Company , schema is assigned to company you have to check in model
    existing_companyname = session.exec(
             select(Company).where(Company.companyname == company.companyname)
         ).first()
@@ -144,7 +164,9 @@ def create_company(company: Pcompany, session: Session = Depends(get_session)):
             raise HTTPException(status_code=400, detail="Company Code already exists")
    
    
-   db_company = Company.from_orm(company)
+   company_data = company.dict()
+   company_data["companyno"] = companyno
+   db_company = Company(**company_data)
    session.add(db_company)
    session.commit()
    session.refresh(db_company)
@@ -221,10 +243,11 @@ def company_search(
     ]
 
 @router.get("/getcompany/", response_model=CompanyResponse)
-def get_company(
+def get_company( 
+    skip: int = 0,   # default = 0, must be >= 0
+    limit: int = 100, # default = 10, must be >= 1  Query(10, ge=1)
     session: Session = Depends(get_session),
-    skip: int = Query(0, ge=0),   # default = 0, must be >= 0
-    limit: int = Query(10, ge=1), # default = 10, must be >= 1
+    compauth:dict =Depends(get_current_user),
 ):
     # local import avoids circular import
     
@@ -266,7 +289,8 @@ def get_company(
                 gstno=company.gstno,
                 currency=company.currency,
                 currency_code=currency_code or "N/A",
-                active=company.active,
+                active=company.active  ,
+                licensetype=company.licensetype
             )
         )
 
@@ -276,7 +300,7 @@ def get_company(
 
 @router.get("/companylist/{companyid}",response_model=List[CompanyRead])
 def company_list(companyid: int,session: Session=Depends(get_session),
-                 current_user: dict= Depends(get_current_user)
+                 #current_user: dict= Depends(get_current_user)
                  
                  ):
     
@@ -315,10 +339,25 @@ def company_list(companyid: int,session: Session=Depends(get_session),
 
 @router.delete("/deletecompany/{company_id}")
 def delete_company(company_id: int, session: Session = Depends(get_session)):
-    db_company = session.get(Company, company_id)
-    if not db_company:
-        raise HTTPException(status_code=404, detail="Company not found")
-    
-    session.delete(db_company)
-    session.commit()
-    return {"detail": "Company deleted successfully"}
+    try:
+        company = session.get(Company, company_id)
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        session.delete(company)
+        session.commit()
+        return {"message": "Company deleted successfully"}
+
+    except IntegrityError as e:
+        session.rollback()
+        # ✅ Detect foreign key violation and return user-friendly message
+        if "foreign key constraint" in str(e.orig).lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete this company because it is referenced in other records (e.g., invoices or users)."
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Database error: {str(e.orig)}"
+            )
