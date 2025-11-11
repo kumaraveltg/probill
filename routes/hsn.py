@@ -9,7 +9,7 @@ from datetime import datetime,date,timedelta
 from routes.userauth import get_current_user
 from routes.taxmaster import TaxHeader
 from routes.company import Company
-
+from sqlalchemy.exc import IntegrityError
 
 router = APIRouter( tags=["HSN"])
 
@@ -262,9 +262,23 @@ def read_hsn(
 
 @router.delete("/hsn/hsndelete/{hsnid}")
 def delete_hsn(hsnid: int, session: Session = Depends(get_session)):     
+   try:
     HSNDel = session.get(HSN, hsnid)
     if not HSN:
         raise HTTPException(status_code=404, detail="City not found")
     session.delete(HSNDel)
     session.commit()
     return {"ok": True}   
+   except IntegrityError as e:
+        session.rollback()
+        # ✅ Detect foreign key violation and return user-friendly message
+        if "foreign key constraint" in str(e.orig).lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete this Record because it is referenced in other records."
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Database error: {str(e.orig)}"
+            )

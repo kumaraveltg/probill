@@ -11,6 +11,7 @@ from routes.company import Company
 from routes.uom import UOM  
 from routes.userauth import get_current_user
 from routes.taxmaster import TaxHeader
+from sqlalchemy.exc import IntegrityError
 
 router = APIRouter(tags=["Product"])
 class ProductHeader(CommonFields, table=True):
@@ -322,10 +323,24 @@ def get_product(companyid: int, skip: int = 0, limit: int = 100, session: Sessio
 
 
 @router.delete("/productdelete/{productid}")
-def delete_product(productid: int, session: Session = Depends(get_session)):    
+def delete_product(productid: int, session: Session = Depends(get_session)): 
+ try:
     product = session.get(ProductHeader, productid)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     session.delete(product)
     session.commit()
     return {"detail": "Product deleted successfully"}
+ except IntegrityError as e:
+        session.rollback()
+        # ✅ Detect foreign key violation and return user-friendly message
+        if "foreign key constraint" in str(e.orig).lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete this Record because it is referenced in other records."
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Database error: {str(e.orig)}"
+            )

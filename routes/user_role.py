@@ -8,6 +8,7 @@ from routes.commonflds import CommonFields
 from datetime import datetime
 from routes.company import Company
 from routes.userauth import get_current_user
+from sqlalchemy.exc import IntegrityError
 
 router = APIRouter(tags=["UserRole"])
 
@@ -216,9 +217,23 @@ def get_userrole_by_id(userrole_id: int, session: Session = Depends(get_session)
 
 @router.delete("/deleteuserrole/{userrole_id}")
 def delete_userrole(userrole_id: int, session: Session = Depends(get_session)):    
+   try: 
     db_userrole = session.get(UserRole, userrole_id)
     if not db_userrole:
         raise HTTPException(status_code=404, detail="User role not found.")
     session.delete(db_userrole)
     session.commit()
     return {"detail": "User role deleted successfully."}
+   except IntegrityError as e:
+        session.rollback()
+        # ✅ Detect foreign key violation and return user-friendly message
+        if "foreign key constraint" in str(e.orig).lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete this Record because it is referenced in other records."
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Database error: {str(e.orig)}"
+            )

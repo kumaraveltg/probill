@@ -8,6 +8,7 @@ from routes.commonflds import CommonFields
 from datetime import datetime, timedelta, date
 from routes.company import Company   
 from routes.userauth import get_current_user
+from sqlalchemy.exc import IntegrityError 
 
 router = APIRouter( tags=["FinancialYear"])
 
@@ -330,6 +331,7 @@ def get_finyr(finyr_id: int, session: Session = Depends(get_session)):
 
 @router.delete("/{finyr_id}", response_model=dict)
 def delete_finyr(finyr_id: int, session: Session = Depends(get_session)):    
+   try:
     finyr = session.get(FinYrheader, finyr_id)
     if not finyr:
         raise HTTPException(status_code=404, detail="Financial year not found")
@@ -342,3 +344,16 @@ def delete_finyr(finyr_id: int, session: Session = Depends(get_session)):
     session.delete(finyr)
     session.commit()
     return {"message": "Financial year and associated periods deleted successfully"}
+   except IntegrityError as e:
+        session.rollback()
+        # ✅ Detect foreign key violation and return user-friendly message
+        if "foreign key constraint" in str(e.orig).lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete this Record because it is referenced in other records."
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Database error: {str(e.orig)}"
+            )

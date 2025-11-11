@@ -7,7 +7,7 @@ from routes.commonflds import CommonFields
 from datetime import datetime
 from routes.userauth import get_current_user
 from routes.company import Company
-
+from sqlalchemy.exc import IntegrityError
 
 router = APIRouter( tags=["TaxMaster"])
 
@@ -316,7 +316,8 @@ def read_taxbyname(companyid: int,taxname:str, session: Session = Depends(get_se
     return Ptaxread(taxheader=PTaxHeader.from_orm(tax), taxdetails=[PTaxDetail.from_orm(detail) for detail in taxmaster])     
 
 @router.delete("/deletetax/{taxheaderid}", response_model=dict)
-def delete_taxmaster(taxheaderid: int, session: Session = Depends(get_session)):    
+def delete_taxmaster(taxheaderid: int, session: Session = Depends(get_session)):  
+   try:  
     db_tax = session.get(TaxHeader, taxheaderid)
     if not db_tax:
         raise HTTPException(status_code=404, detail="Tax not found")
@@ -330,3 +331,16 @@ def delete_taxmaster(taxheaderid: int, session: Session = Depends(get_session)):
     session.commit()
 
     return {"detail": "Tax deleted successfully"}
+   except IntegrityError as e:
+        session.rollback()
+        # ✅ Detect foreign key violation and return user-friendly message
+        if "foreign key constraint" in str(e.orig).lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete this Record because it is referenced in other records."
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Database error: {str(e.orig)}"
+            )

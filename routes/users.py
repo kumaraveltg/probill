@@ -10,6 +10,7 @@ from routes.utils import hash_password
 from routes.company import Company 
 from routes.userauth import get_current_user
 from routes.user_role import UserRole
+from sqlalchemy.exc import IntegrityError
 
 
 
@@ -346,10 +347,24 @@ def users_company(
 #delete
 @router.delete("/delete/{id}")
 def delete_user(id: int,session: Session=Depends(get_session)):
+  try:
    db_user = session.get(Users,id)
    if not db_user:
       raise HTTPException(status_code=404,detail="User Not found")
    session.delete(db_user)
    session.commit()
    return {"message":f"User Name {db_user.username} has been deleted "}
+  except IntegrityError as e:
+        session.rollback()
+        # ✅ Detect foreign key violation and return user-friendly message
+        if "foreign key constraint" in str(e.orig).lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete this Record because it is referenced in other records."
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Database error: {str(e.orig)}"
+            )
    

@@ -35,11 +35,13 @@ class Company(SQLModel, table=True):
     currency:int = Field(default=0, nullable=False)
     active: bool = True  # default value
     companyno: str
-    licensetype:Optional[str]=None
+    licensesid: int = Field(foreign_key="licenses.id",nullable=False)
+    licensestatus:Optional[str]=Field(default="Pending")
     
     
 #schema/ pydantic
 class Pcompany(BaseModel):
+    id: Optional[int] = None
     createdby: Optional[datetime]= None
     modifiedby: Optional[datetime]= None
     companyno:Optional[str]= None
@@ -103,8 +105,10 @@ class CompanyRead(BaseModel):
     currency:Optional[int]
     currencycode: Optional[str] = None
     active: bool     
-    companyno: Optional[str] = None
-    licensetype:Optional[str]=None
+    companyno: Optional[str] = None 
+    licensestatus:Optional[str] = None 
+    planname:Optional[str] = None 
+    planperiod:Optional[str] = None 
     
     model_config = {
         "from_attributes": True,        
@@ -147,7 +151,7 @@ def generate_unique_company_no(session):
 # ✅ Create company
 @router.post("/createcompany",response_model=Pcompany) 
 def create_company(company: Pcompany, session: Session = Depends(get_session)):
-    
+ try:   
    companyno = str(generate_unique_company_no(session ))
    
    existing_companyname = session.exec(
@@ -171,6 +175,10 @@ def create_company(company: Pcompany, session: Session = Depends(get_session)):
    session.commit()
    session.refresh(db_company)
    return Pcompany.from_orm(db_company)
+ 
+ except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/Updatecompany/{company_id}",response_model=Pcompany)
 def update_company(company_id: int, company_update: CompanyUpdate, session: Session = Depends(get_session)):
@@ -253,11 +261,13 @@ def get_company(
     
     from routes.currecny import Currency
     from routes.company import Company 
+    from routes.license import Licenses
 
     # base query
     statement = (
-        select(Company, Currency.currencycode)
+        select(Company, Currency.currencycode, Licenses.planname,Licenses.planperiod)
         .join(Currency, Company.currency == Currency.id, isouter=True)
+        .join(Licenses, Company.licensesid == Licenses.id, isouter=True)
         .offset(skip)
         .limit(limit)
     )
@@ -270,7 +280,7 @@ def get_company(
     totalcount = session.exec(select(func.count()).select_from(Company)).one()
 
     company_list = []
-    for company, currency_code in result:
+    for company, currency_code,planname,planperiod in result:
         company_list.append(
             CompanyRead(
                 id=company.id,
@@ -289,8 +299,11 @@ def get_company(
                 gstno=company.gstno,
                 currency=company.currency,
                 currency_code=currency_code or "N/A",
-                active=company.active  ,
-                licensetype=company.licensetype
+                licensesid = company.licensesid,
+                planname= planname,
+                planperiod= planperiod,
+                active=company.active  , 
+                licensestatus=company.licensestatus
             )
         )
 

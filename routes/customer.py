@@ -12,6 +12,7 @@ from routes.state import State
 from routes.country import Country
 from routes.currecny import Currency
 from routes.userauth import get_current_user
+from sqlalchemy.exc import IntegrityError
 
 router = APIRouter( tags=["Customer"])
 
@@ -518,6 +519,7 @@ def get_customer_contacts(customerid: int, session: Session = Depends(get_sessio
 
 @router.delete("/custdelete/{customerid}", response_model=dict)
 def delete_customer(customerid: int, session: Session = Depends(get_session)):    
+ try:
     db_tax = session.get(CustomerHeader, customerid)
     if not db_tax:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -532,3 +534,16 @@ def delete_customer(customerid: int, session: Session = Depends(get_session)):
 
     return {"detail": "Customer deleted successfully"}
 
+ except IntegrityError as e:
+        session.rollback()
+        # ✅ Detect foreign key violation and return user-friendly message
+        if "foreign key constraint" in str(e.orig).lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete this Record because it is referenced in other records."
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Database error: {str(e.orig)}"
+            )

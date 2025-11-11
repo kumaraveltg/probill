@@ -8,6 +8,7 @@ from routes.commonflds import CommonFields
 from datetime import datetime, timedelta, date
 from routes.company import Company  
 from routes.userauth import get_current_user
+from sqlalchemy.exc import IntegrityError
 
 router = APIRouter(tags=["UOM"])
 
@@ -195,6 +196,7 @@ def uom_list( company_id: int,skip: int = 0, limit: int = 10,  session: Session=
 
 @router.delete("/uomdelete/{uom_id}", response_model=UOMDelete)
 def delete_uom(uom_id: int, session: Session = Depends(get_session)):
+   try:
     uom = session.get(UOM, uom_id)
     if not uom:
         raise HTTPException(status_code=404, detail="UOM not found")
@@ -202,3 +204,16 @@ def delete_uom(uom_id: int, session: Session = Depends(get_session)):
     session.commit()
     uom_data = UOMDelete.from_orm(uom)
     return uom_data
+   except IntegrityError as e:
+        session.rollback()
+        # ✅ Detect foreign key violation and return user-friendly message
+        if "foreign key constraint" in str(e.orig).lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete this Record because it is referenced in other records."
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Database error: {str(e.orig)}"
+            )

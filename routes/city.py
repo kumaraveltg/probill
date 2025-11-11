@@ -9,6 +9,7 @@ from routes.company import Company
 from routes.state import State
 from routes.country import Country
 from routes.userauth import get_current_user
+from sqlalchemy.exc import IntegrityError
 
 router = APIRouter( tags=["City"])
 
@@ -222,15 +223,43 @@ def read_city(city_id: int, session: Session = Depends(get_session)):
     )            
 @router.delete("/city/{city_id}")
 def delete_city(city_id: int, session: Session = Depends(get_session)):     
+   try:
     city = session.get(City, city_id)
     if not city:
         raise HTTPException(status_code=404, detail="City not found")
     session.delete(city)
     session.commit()
-    return {"ok": True}            
+    return {"ok": True} 
+   except IntegrityError as e:
+        session.rollback()
+        # ✅ Detect foreign key violation and return user-friendly message
+        if "foreign key constraint" in str(e.orig).lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete this Record because it is referenced in other records."
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Database error: {str(e.orig)}"
+            )           
 
 @router.delete("/cities/")
-def delete_all_cities(session: Session = Depends(get_session)):    
+def delete_all_cities(session: Session = Depends(get_session)):  
+   try:
     session.exec(delete(City))
     session.commit()
     return {"ok": True}
+   except IntegrityError as e:
+        session.rollback()
+        # ✅ Detect foreign key violation and return user-friendly message
+        if "foreign key constraint" in str(e.orig).lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete this Record because it is referenced in other records."
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Database error: {str(e.orig)}"
+            ) 

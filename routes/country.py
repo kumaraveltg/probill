@@ -6,6 +6,7 @@ from typing import List, Optional
 from routes.commonflds import CommonFields  
 from datetime import datetime  
 from routes.userauth import get_current_user
+from sqlalchemy.exc import IntegrityError
 
 router = APIRouter( tags=["Country"])
 
@@ -138,7 +139,8 @@ def read_country(country_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Country not found")
     return country
 @router.delete("/country/{country_id}")
-def delete_country(country_id: int, session: Session = Depends(get_session)):    
+def delete_country(country_id: int, session: Session = Depends(get_session)):   
+   try: 
     country = session.get(Country, country_id)
     if not country:
         raise HTTPException(status_code=404, detail="Country not found")
@@ -146,4 +148,16 @@ def delete_country(country_id: int, session: Session = Depends(get_session)):
     session.exec(statement)
     session.commit()
     return {"ok": True, "message": "Country deleted successfully"}
-
+   except IntegrityError as e:
+        session.rollback()
+        # ✅ Detect foreign key violation and return user-friendly message
+        if "foreign key constraint" in str(e.orig).lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete this Record because it is referenced in other records."
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Database error: {str(e.orig)}"
+            )

@@ -6,7 +6,8 @@ from pydantic import EmailStr,validator,BaseModel
 from typing import List, Optional,Dict, Any 
 from datetime import datetime   
 from routes.company import Company
-from routes.commonflds import CommonFields 
+from routes.commonflds import CommonFields
+from sqlalchemy.exc import IntegrityError
 
 router = APIRouter(prefix="/currency", tags=["Currency"])    
 
@@ -168,9 +169,23 @@ def get_currency_by_id(currency_id: int, session: Session = Depends(get_session)
 
 @router.delete("/deletecurrency/{currency_id}")
 def delete_currency(currency_id: int, session: Session = Depends(get_session)):
+   try:
     db_currency = session.get(Currency, currency_id)
     if not db_currency:
         raise HTTPException(status_code=404, detail="Currency not found.")
     session.delete(db_currency)
     session.commit()
     return {"detail": "Currency deleted successfully."}
+   except IntegrityError as e:
+        session.rollback()
+        # ✅ Detect foreign key violation and return user-friendly message
+        if "foreign key constraint" in str(e.orig).lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete this Record because it is referenced in other records."
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Database error: {str(e.orig)}"
+            )
