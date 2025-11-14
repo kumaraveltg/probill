@@ -298,7 +298,8 @@ def list_finyrs(
     totalcount = session.exec(select(func.count(FinYrheader.id))).one()
 
     if not finyrs:
-        raise HTTPException(status_code=404, detail="finyrs not found")
+        #raise HTTPException(status_code=404, detail="finyrs not found")
+        return FinyrgetResponse(total=0,finyrs=[])
 
     # ✅ Correctly loop through the list
     finyr_list = [

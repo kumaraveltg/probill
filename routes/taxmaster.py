@@ -260,7 +260,8 @@ def read_taxes(
     ).all()
 
     if not tax_header:
-        raise HTTPException(status_code=404, detail="Tax header not found")
+        #raise HTTPException(status_code=404, detail="Tax header not found")
+        return TaxResponse(total=0, taxlist=[])
 
     # Total count
     totalcount = session.exec(

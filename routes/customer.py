@@ -476,7 +476,7 @@ def read_customer(
     skip: int = 0,
     limit: int = 100,
     session: Session = Depends(get_session),
-    # current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     c = CustomerViewHeader
 
@@ -490,7 +490,8 @@ def read_customer(
     ).all()
 
     if not customer_header:
-        raise HTTPException(status_code=404, detail="Customer not found")
+        #raise HTTPException(status_code=404, detail="Customer not found")
+        return CustomerResponse(total=0,customer_list=[])
 
     # Total count
     totalcount = session.exec(

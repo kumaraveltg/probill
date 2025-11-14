@@ -64,6 +64,7 @@ class Puser(BaseModel):
     userroleids: Optional[List[int]] = None
     usertype: Optional[str]= None
     active: bool = True 
+    sourceid:Optional[int]= None
     model_config = {
         "from_attributes": True,
         "json_encoders": {

@@ -37,6 +37,8 @@ class Company(SQLModel, table=True):
     companyno: str
     licensesid: int = Field(foreign_key="licenses.id",nullable=False)
     licensestatus:Optional[str]=Field(default="Pending")
+    planname:Optional[str]=None
+    planperiod:Optional[str]=None
     
     
 #schema/ pydantic
@@ -57,6 +59,9 @@ class Pcompany(BaseModel):
     createdby: str = Field(nullable=False)
     modifiedby: str = Field(nullable=False)
     active: bool = True 
+    planname: Optional[str]=None
+    planperiod: Optional[str]=None
+    licensestatus: Optional[str]=None
     model_config = {
         "from_attributes": True,
         "json_encoders": {
@@ -75,6 +80,8 @@ class CompanyUpdate(BaseModel):
     gstno: Optional[str]=None  
     currency: Optional[int] = None
     modifiedby: str = Field(nullable=False)
+    planname: Optional[str]=None
+    planperiod:Optional[str]=None
     active: Optional[bool] = None 
     model_config = {
         "from_attributes": True,
@@ -130,6 +137,8 @@ class CompanySearch(BaseModel):
     currency:Optional[int]
     currencycode: Optional[str] = None
     active: bool  
+    planname:Optional[str]=None
+    planperiod:Optional[str]=None
 
 class CompanyResponse(BaseModel):
     company_list: list[CompanyRead]
@@ -216,7 +225,9 @@ def company_search(
         Company.contactperson,
         Company.active,
         Company.currency,
-        Currency.currencycode
+        Currency.currencycode,
+        Company.planname,
+        Company.planperiod,
     ).join(Currency, Company.currency == Currency.id)
 # Apply filters
      if field == "companycode":
@@ -246,6 +257,8 @@ def company_search(
             "active": r.active,  
             "currency": r.currency,
             "currencycode": r.currencycode,
+            "planname":r.planname,
+            "planperiod":r.planperiod,
         }
         for r in results
     ]
@@ -344,7 +357,9 @@ def company_list(companyid: int,session: Session=Depends(get_session),
             currency=company.currency or 0,
             currencycode=currency_code or "N/A",  # <- field name must match CompanyRead
             active=company.active,
-            companyno=company.companyno or ""
+            companyno=company.companyno or "",
+            planname=company.planname,
+            planperiod=company.planperiod,
         )
     )
     return company_list

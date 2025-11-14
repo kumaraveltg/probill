@@ -36,13 +36,14 @@ class UserRole(CommonFields, table=True):
  
 #schema/ pydantic
 class PUserRole(BaseModel):
+    id:Optional[int]=None
     createdby: str = Field(nullable=False)
     modifiedby: str = Field(nullable=False)
     companyid: int = Field(default= 0,nullable=False)
     companyno: str
     rolename: str = Field(nullable=False)
     permissions: Optional[List[Dict[str, Any]]] = []
-    
+    sourceid:Optional[int]= None
     model_config = {
         "from_attributes": True,
         "json_encoders": {

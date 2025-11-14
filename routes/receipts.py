@@ -523,7 +523,8 @@ def get_receipts_by_company(
     )
 
     if not db_receipts:
-        raise HTTPException(status_code=404, detail="No receipts found for this company")
+        #raise HTTPException(status_code=404, detail="No receipts found for this company")
+        return ReceiptsHeaderResponse(total=0,receipts_list=[])
 
     # 3️⃣ Build response list
     receipt_list = []

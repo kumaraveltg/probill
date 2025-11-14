@@ -287,7 +287,8 @@ def get_product(companyid: int, skip: int = 0, limit: int = 100, session: Sessio
     ).one()
 
     if not product_rows:
-        raise HTTPException(status_code=404, detail="Product not found")
+       # raise HTTPException(status_code=404, detail="Product not found")
+       return ProductResponse(total=0,productlist=[])
 
     # Convert query rows into list of dicts (with created/modified info)
     productlist = [

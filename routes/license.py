@@ -41,12 +41,13 @@ class LicensePost(BaseModel):
     planperiod:Optional[str]=None 
     startdate: Optional[date] = None
     enddate: Optional[date] = None
-    
+    sourceid:Optional[int]= None
     active : bool = Field(default=True,nullable=True)
     createdby: str
     modifiedby: str
 
 class LicenseUpdate(BaseModel):
+    id:int
     companyid: int = Field(foreign_key="company.id", nullable=False)
     companyno: Optional[str]=None 
     planname: Optional[str]=None  
@@ -68,6 +69,7 @@ class LicenseRead(BaseModel):
     id:int
     companyid: int = Field(foreign_key="company.id", nullable=False)
     companyno: Optional[str]=None 
+    companyname: Optional[str]=None
     planname: Optional[str]=None 
     planperiod: Optional[str]=None  
     startdate: date = Field(nullable=False)
@@ -109,7 +111,7 @@ class LicenseSearch(BaseModel):
 
 class LicenseResponse(BaseModel):
     license_list: List[LicenseRead]
-    total: int
+    total: int 
 
 def generate_license_key():
     return str(uuid.uuid4()).upper().replace("-", "")
@@ -191,7 +193,9 @@ def create_license(
         enddate=end_date, 
         active=license_input.active,
         createdby=license_input.createdby,
-        modifiedby=license_input.modifiedby
+        modifiedby=license_input.modifiedby,
+        sourceid=license_input.sourceid
+        
     )
 
     session.add(db_license)
@@ -229,7 +233,7 @@ def update_license(licenseid:int,LicenseUPD: LicenseUpdate, session: Session= De
 
     return db_license
 
-@router.get("/licenselist/")
+@router.get("/licenselist/",response_model=LicenseResponse)
 def read_license( 
     skip: int = 0,
     limit: int = 10,
@@ -273,9 +277,58 @@ def read_license(
             "active": lic.active, 
             "licensekey":lic.licensekey,
             "userlimit":lic.userlimit,
+            "createdby":lic.createdby,
+            "createdon":lic.createdon,
+            "modifiedby":lic.modifiedby,
+            "modifiedon":lic.modifiedon,
         })
 
     return {"license_list": result, "total": totalcount}
+
+@router.get("/licensevalid/{companyno}")
+def validate_license(companyno: str, session: Session = Depends(get_session)):
+    today = date.today()
+
+    # 🔹 Query the license for the given companyno
+    query = (
+        select(
+            Licenses,
+            Company.companyname
+        )
+        .join(Company, Licenses.companyno == Company.companyno, isouter=True)
+        .where(
+            Licenses.companyno == companyno,
+            Licenses.active == True
+        )
+    )
+
+    license_data = session.exec(query).first()
+
+    if not license_data:
+        raise HTTPException(status_code=404, detail="No active license found for this company")
+
+    license_obj, companyname = license_data
+
+    # 🔍 Validate date range
+    if not (license_obj.startdate <= today <= license_obj.enddate):
+        return {
+            "companyno": companyno,
+            "companyname": companyname,
+            "status": "expired",
+            "message": "License has expired or not yet active.",
+            "startdate": license_obj.startdate,
+            "enddate": license_obj.enddate,
+        }
+
+    # ✅ License valid
+    return {
+        "companyno": companyno,
+        "companyname": companyname,
+        "status": "valid",
+        "message": "License is active and valid.",
+        "startdate": license_obj.startdate,
+        "enddate": license_obj.enddate,
+    }
 
 @router.delete("/licensedelete/{licenseid}")
 def delete_license(licenseid: int, session: Session = Depends(get_session)):  

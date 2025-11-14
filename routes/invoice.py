@@ -671,7 +671,8 @@ def read_invoice(
     ).all()
 
     if not invoice_header:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+        #raise HTTPException(status_code=404, detail="Invoice not found")
+        return InvoiceResponse(total=0,invoice_list=[])
 
     # Total count
     totalcount = session.exec(
