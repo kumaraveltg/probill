@@ -1,0 +1,164 @@
+Start Time : 12/26/2025 3:59:02 PM
+Executing Action
+ASB XE3/32/64 DLL running
+[Compiled on 30/08/2019 11:11:00 AM] [File Version : 10.6.0.0]] [Product Version : 10.0][64Bit]
+DB Manager created
+Current ASB DLL folder : E:\AxpertWeb\hmsDemoscripts
+Connecting to project
+Session key validation
+Session key validation completed
+Dbx name = hmsdemo
+ConnectionName  = oracle
+DriverName  = oracle
+GetDriverFunc  = getSQLDriverORACLE
+LibraryName  = E:\AxpertWeb\hmsDemoscripts\dbxora.dll
+VendorLib  = E:\AxpertWeb\hmsDemoscripts\OCI.dll
+Database  = orcldb
+User_Name  = hmsdemo
+Select sysdate as sdt from dual
+Time elapsed = 2
+select ConnectNoSeq.NextVal from Dual
+
+Time elapsed = 4
+Time elapsed = 3
+select props from axprops where lower(name)='app' order by blobno
+
+Time elapsed = 5
+SELECT Constraint_Name FROM AXCONSTRAINTS where 1=2
+
+Time elapsed = 1
+Connection to DB Successful 
+Executing DoAction webservice
+-----------------------------
+Registering app/user variables for the session
+sesid=0el1wgv3yghxvsfy1pis5t0l
+ax_evalcopy=F
+rolename=default
+responsibilies=default
+M_LOCATIONID=0
+M_LOCATION=
+M_BRANCHID=75593000000268
+M_COUNTRYID=11072000000091
+M_COUNTRY=INDIA
+M_COMPANYID=75593000000263
+M_USERAPPS=
+M_PERIOD12=Mar-26
+M_PERIOD11=Feb-26
+M_PERIOD10=Jan-26
+M_PERIOD9=Dec-25
+M_PERIOD8=Nov-25
+M_PERIOD7=Oct-25
+M_PERIOD6=Sep-25
+M_PERIOD5=Aug-25
+M_PERIOD4=Jul-25
+M_PERIOD3=Jun-25
+M_PERIOD2=May-25
+M_PERIOD1=Apr-25
+VDIM4=
+VDIM3=
+VDIM2=
+VDIM1=
+M_STOCKPOSTING=T
+M_ONLINEINVPOSTING=F
+M_ACCTPOSTING=T
+M_GROUPOFCOMP=F
+M_CURRENCY=INR
+M_FYENDDATE=31/03/2026
+M_FYSTARTDATE=01/04/2025
+M_FINYR=2025
+M_BRIDENTIFIER=AG
+M_COMPANYCODE=AG
+FROMUSERLOGIN=F
+M_BRANCHSITE=1
+AXPIMAGESERVER=
+M_BRANCH=CHENNAI
+M_COMPANY=Agile Hospital
+AXP_DISPLAYTEXT=Company:Agile Hospital,Location:CHENNAI,Financial Year:2025
+AXGLO_HIDE=T
+AXGLO_USER=kumar
+axglo_recordid=1536220001703
+AXPIMAGEPATH=
+barcodeurl=https://agilehms.com/AxpertBarcode/
+isdmrinteg=F
+Axp_LockOnRead=false
+FORM_LOAD_FROM_DB=true
+m_gstposting=T
+m_finposting=T
+isbranchmandatory=t
+Lic Str : ~~9867~5~0~0
+User Group default
+User Roles default
+Registering app/user variables for the session completed
+select * from connections where sessionid = :sesid
+
+Time elapsed = 4
+Received XML <root appsessionkey='00010023016801570174009801650155016901060164009701570160016601620152016301570166016301480149015701595751526501151571590018' username='kumar' axpapp="hmsdemo" trace="E:\AxpertWeb\hmsdemoscripts\Log\0el1wgv3yghxvsfy1pis5t0l\Action-imp.txt" sessionid="0el1wgv3yghxvsfy1pis5t0l"  stype="iviews" sname="wamaivie" actname="imp" __file=""><params></params><varlist></varlist><hmsdemo><type>db</type><structurl></structurl><db>Oracle</db><driver>dbx</driver><version></version><dbcon>orcldb</dbcon><dbuser>hmsdemo</dbuser><pwd></pwd><dataurl></dataurl></hmsdemo><axprops><lastlogin>financedemo</lastlogin><oradatestring>dd/mm/yyyy hh24:mi:ss</oradatestring><crlocation></crlocation><lastusername>admin</lastusername><login>local</login><skin>Black</skin><lastlang>ENGLISH</lastlang><axhelp>true</axhelp><showuser>t</showuser></axprops><globalvars><isbranchmandatory>t</isbranchmandatory><m_finposting>T</m_finposting><m_gstposting>T</m_gstposting><FORM_LOAD_FROM_DB>true</FORM_LOAD_FROM_DB><Axp_LockOnRead>false</Axp_LockOnRead><isdmrinteg>F</isdmrinteg><barcodeurl>https://agilehms.com/AxpertBarcode/</barcodeurl><AXPIMAGEPATH></AXPIMAGEPATH><axglo_recordid>1536220001703</axglo_recordid><AXGLO_USER>kumar</AXGLO_USER><AXGLO_HIDE>T</AXGLO_HIDE><AXP_DISPLAYTEXT>Company:Agile Hospital,Location:CHENNAI,Financial Year:2025</AXP_DISPLAYTEXT><M_COMPANY>Agile Hospital</M_COMPANY><M_BRANCH>CHENNAI</M_BRANCH><AXPIMAGESERVER></AXPIMAGESERVER><M_BRANCHSITE>1</M_BRANCHSITE><FROMUSERLOGIN>F</FROMUSERLOGIN><M_COMPANYCODE>AG</M_COMPANYCODE><M_BRIDENTIFIER>AG</M_BRIDENTIFIER><M_FINYR>2025</M_FINYR><M_FYSTARTDATE>01/04/2025</M_FYSTARTDATE><M_FYENDDATE>31/03/2026</M_FYENDDATE><M_CURRENCY>INR</M_CURRENCY><M_GROUPOFCOMP>F</M_GROUPOFCOMP><M_ACCTPOSTING>T</M_ACCTPOSTING><M_ONLINEINVPOSTING>F</M_ONLINEINVPOSTING><M_STOCKPOSTING>T</M_STOCKPOSTING><VDIM1></VDIM1><VDIM2></VDIM2><VDIM3></VDIM3><VDIM4></VDIM4><M_PERIOD1>Apr-25</M_PERIOD1><M_PERIOD2>May-25</M_PERIOD2><M_PERIOD3>Jun-25</M_PERIOD3><M_PERIOD4>Jul-25</M_PERIOD4><M_PERIOD5>Aug-25</M_PERIOD5><M_PERIOD6>Sep-25</M_PERIOD6><M_PERIOD7>Oct-25</M_PERIOD7><M_PERIOD8>Nov-25</M_PERIOD8><M_PERIOD9>Dec-25</M_PERIOD9><M_PERIOD10>Jan-26</M_PERIOD10><M_PERIOD11>Feb-26</M_PERIOD11><M_PERIOD12>Mar-26</M_PERIOD12><M_USERAPPS></M_USERAPPS><M_COMPANYID>75593000000263</M_COMPANYID><M_COUNTRY>INDIA</M_COUNTRY><M_COUNTRYID>11072000000091</M_COUNTRYID><M_BRANCHID>75593000000268</M_BRANCHID><M_LOCATION></M_LOCATION><M_LOCATIONID>0</M_LOCATIONID><username>kumar</username><responsibilies>default</responsibilies><rolename>default</rolename><ax_evalcopy>F</ax_evalcopy><sesid>0el1wgv3yghxvsfy1pis5t0l</sesid><usergroup>default~200</usergroup><project>hmsdemo</project><groupno>0</groupno><userroles>default</userroles><pageaccess></pageaccess><transidlist>~~9867~5~0~0</transidlist><appvartypes>ccccccccncccccccccccddccccccccccccccccccccccncnncn</appvartypes></globalvars><uservars></uservars></root>
+Received SXML 
+Sql : select props from iviews where lower(name)= :name  order by blobno
+
+Paramval : wamaivie
+ParamTYpe : c
+Param List : name
+
+select props from iviews where lower(name)= :name  order by blobno
+
+Time elapsed = 2
+Step5
+Load Struct Name : tward
+Creating Action object
+Creating Parser 
+Registering Params 
+Calling action in docoreaction
+
+
+
+Starting Action Execution - imp
+Executing task - csv import
+file name : 
+Error in Executing task csv import
+Creating message node
+Constraint Name  = 
+File not found
+Exception in RemoteAction
+Result : {"error":[{"msg":"File not found"}]}
+Freeing DbCall Resources
+Freeing Action Obj Resources
+# 1#Saving to log
+Param Type = c
+sessionid=0el1wgv3yghxvsfy1pis5t0l
+Param Type = c
+username=kumar
+Param Type = c
+calledon=26/12/2025 15:59:02
+Param Type = c
+callfinished=26/12/2025 15:59:02
+Param Type = n
+recordid=0
+Param Type = c
+servicename=Executing Action
+Param Type = c
+serviceresult=File not found
+Param Type = n
+timetaken=82
+Param Type = n
+dbtimetaken=55
+Param Type = n
+db_conntime=34
+insert into axpertlog (sessionid,username,calledon,callfinished,structname,recordid,servicename,serviceresult,timetaken,dbtimetaken,db_conntime) values (:sessionid,:username,to_date(:calledon,'dd/mm/yyyy hh24:mi:ss'),to_date(:callfinished,'dd/mm/yyyy hh24:mi:ss'),null,:recordid,:servicename,:serviceresult,:timetaken,:dbtimetaken,:db_conntime)
+
+Closing connection
+Freeing AxProvider Resources
+Destroying License Manager
+Destroying License Manager XDS
+Destroying License Manager Completed
+Freeing DbManager Resources
+Disconnecting from db hmsdemo
+Disconnecting...
+Disconnected...
+Dbx name = 
+ConnectionName  = 
+DriverName  = 
+GetDriverFunc  = 
+LibraryName  = 
+VendorLib  = 
+Successfully disconnected from db hmsdemo

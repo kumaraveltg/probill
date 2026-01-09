@@ -37,6 +37,8 @@ class InvoiceHeader(CommonFields, table=True):
     roundedoff:float
     totnetamount:float
     receiptamount: Optional[float] = 0.00
+    attachedfile: Optional[str] = None
+    attachedfilename: Optional[str] = None
     model_config = {
         "from_attributes": True,
         "json_encoders": {
@@ -123,6 +125,8 @@ class InvoiceView(SQLModel,table=True):
     referenceno:str
     referencedate: date
     receiptamount: Optional[float] = 0.00
+    attachedfile: Optional[str] = None
+    attachedfilename: Optional[str] = None
     model_config = {
         "from_attributes": True,
         "json_encoders": {
@@ -217,6 +221,8 @@ class PostInvoiceHeader(BaseModel):
     ded_othercharges:Optional[float] = Field(default=0.00 )
     roundedoff:Optional[float] = Field(default=0.00 )
     totnetamount:Optional[float] = Field(default=0.00 )
+    attachedfile: Optional[str] = None
+    attachedfilename: Optional[str] = None
     invdetails: List[PostInvoiceDetails] = []
     model_config = {
         "from_attributes": True,
@@ -272,6 +278,8 @@ class UpdateInvoiceHeader(BaseModel):
     ded_othercharges:float
     roundedoff:float
     totnetamount:float
+    attachedfile: Optional[str] = None
+    attachedfilename: Optional[str] = None
     invdetails: List[UpdateInvoiceDetails] = []
     model_config = {
         "from_attributes": True,
@@ -462,7 +470,9 @@ def create_invoice(payload: PostInvoiceHeader, session: Session = Depends(get_se
             roundedoff=payload.roundedoff,
             totnetamount=payload.totnetamount,
             createdby=payload.createdby,
-            modifiedby=payload.modifiedby
+            modifiedby=payload.modifiedby,
+            attachedfile=payload.attachedfile,
+            attachedfilename=payload.attachedfilename,
         )
 
         session.add(db_invoice)
@@ -643,6 +653,8 @@ def invoice_search(
             "igstamount": igstamount or 0,
             "netamount": netamount or 0,
             "afterdiscountamount": afterdiscountamount or 0,
+            "attachedfile": r.attachedfile,
+            "attachedfilename": r.attachedfilename,
                     })
 
         response_data.append(InvoiceSearch(**record))
